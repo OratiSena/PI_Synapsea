@@ -92,20 +92,24 @@ float dest_2d[INTERPOLATED_ROWS * INTERPOLATED_COLS];
 TwoWire I2C_MAX = TwoWire(1); // Segundo barramento I2C exclusivo para o MAX30102 (GPIO25/GPIO26)
 MAX30105 particleSensor;
 
-#define BUFFER_LENGTH 100
-uint32_t irBuffer[BUFFER_LENGTH];
-uint32_t redBuffer[BUFFER_LENGTH];
-int32_t  spo2_val         = 0;
-int8_t   spo2Valid        = 0;
-int32_t  bpm_val          = 0;
-int8_t   bpmValid         = 0;
-bool     maxOK            = false;
-bool     dedoDetectado    = false;
-bool     bufferPreenchido = false;
-int      bufIdx           = 0;
-int      prevBPM_disp     = -1;
-int      prevSpO2_disp    = -1;
-String   prevStatus_disp  = "";
+bool     maxOK         = false;
+bool     dedoDetectado = false;
+long     irValue       = 0;
+long     redValue      = 0;
+
+// ─── ECG fake ─────────────────────────────────────────────────────────────
+#define ECG_W   220
+#define ECG_Y   255
+#define ECG_H    40
+int  ecgBuf[ECG_W]   = {0};
+int  ecgPos          = 0;
+long prevIR          = 0;
+
+// ─── Cache de display para evitar redesenho desnecessário ─────────────────
+int   prevBPM_d      = -999;
+int   prevSpo2_d     = -999;
+bool  prevDedo_d     = false;
+bool  prevMaxOK_d    = false;
 
 // ─── Botão e controle de tela ──────────────────────────────────────────────
 #define BTN_PIN 27
@@ -114,13 +118,29 @@ bool btnAnterior                            = HIGH;
 unsigned long ultimoDebounce                = 0;
 const unsigned long debounceDelay           = 300;
 unsigned long ultimaAtualizacaoMAX          = 0;
-const unsigned long intervaloAtualizacaoMAX = 1000;
+const unsigned long intervaloAtualizacaoMAX = 300;
 
 
 
 
 
 
+
+// Declarações antecipadas
+void verificarBotaoTrocaTela();
+void iniciarMAX30102();
+void scannerI2CMAX();
+void lerMAX30102();
+void desenharTelaMAX();
+void desenharCabecalhoMAX();
+void desenharValoresMAX(bool forcar);
+void atualizarECG();
+void colorbar();
+void drawpixels(float *p, uint8_t rows, uint8_t cols, uint8_t boxW, uint8_t boxH, boolean showVal);
+float get_point(float *p, uint8_t rows, uint8_t cols, int8_t x, int8_t y);
+void set_point(float *p, uint8_t rows, uint8_t cols, int8_t x, int8_t y, float f);
+void interpolate_image(float *src, uint8_t src_rows, uint8_t src_cols, float *dest, uint8_t dest_rows, uint8_t dest_cols);
+void interpolate_linear_image(float *src, uint8_t src_rows, uint8_t src_cols, float *dest, uint8_t dest_rows, uint8_t dest_cols);
 
 void setup() {
   Serial.begin(115200);
@@ -150,6 +170,8 @@ void setup() {
   pinMode(BTN_PIN, INPUT_PULLUP);
 
   // Inicializar MAX30102 no segundo barramento I2C
+  I2C_MAX.begin(25, 26);
+  scannerI2CMAX();
   iniciarMAX30102();
 }
 
@@ -397,121 +419,245 @@ void verificarBotaoTrocaTela() {
     ultimoDebounce = millis();
     telaAtual = (telaAtual == 0) ? 1 : 0;
     tft.fillScreen(0x0000); // limpa tela ao trocar
-    if (telaAtual == 0) colorbar(); // restaura barra de cores na tela térmica
+    if (telaAtual == 0) {
+      colorbar(); // restaura barra de cores na tela térmica
+    } else {
+      // Força redesenho completo ao entrar na tela do MAX
+      prevBPM_d  = -999;
+      prevSpo2_d = -999;
+      prevDedo_d  = false;
+      prevMaxOK_d = false;
+      desenharCabecalhoMAX();
+    }
   }
   btnAnterior = btnAtual;
 }
 
+// ─── Scanner I2C no barramento do MAX30102 ───────────────────────────────
+void scannerI2CMAX() {
+  Serial.println("Escaneando I2C_MAX (GPIO25/GPIO26)...");
+  bool encontrou = false;
+  for (uint8_t addr = 1; addr < 127; addr++) {
+    I2C_MAX.beginTransmission(addr);
+    if (I2C_MAX.endTransmission() == 0) {
+      Serial.print("  Dispositivo encontrado: 0x");
+      Serial.println(addr, HEX);
+      encontrou = true;
+    }
+  }
+  if (!encontrou) Serial.println("  Nenhum dispositivo encontrado no I2C_MAX!");
+}
+
 // ─── MAX30102: inicialização ───────────────────────────────────────────────
 void iniciarMAX30102() {
-  I2C_MAX.begin(25, 26); // SDA=GPIO25, SCL=GPIO26 (barramento separado do AMG8833)
+  // I2C_MAX.begin() já foi chamado antes desta função
   if (!particleSensor.begin(I2C_MAX, I2C_SPEED_STANDARD)) {
-    Serial.println("MAX30102 nao encontrado em GPIO25/GPIO26");
+    Serial.println("MAX30102 NAO encontrado em GPIO25/GPIO26");
     maxOK = false;
     return;
   }
-  particleSensor.setup();                       // configuração padrão
-  particleSensor.setPulseAmplitudeRed(0x0A);   // LED vermelho baixo (modo teste)
-  particleSensor.setPulseAmplitudeGreen(0);    // desliga LED verde (não usado)
+  particleSensor.setup();
+  particleSensor.setPulseAmplitudeRed(0x1F);
+  particleSensor.setPulseAmplitudeIR(0x1F);
+  particleSensor.setPulseAmplitudeGreen(0);
   maxOK = true;
-  Serial.println("MAX30102 inicializado em GPIO25/GPIO26");
+  Serial.println("MAX30102 encontrado e inicializado em GPIO25/GPIO26");
 }
 
-// ─── MAX30102: leitura de IR, RED e cálculo de BPM/SpO2 ──────────────────
+// ─── MAX30102: leitura raw de IR e RED (modo depuração) ──────────────────
 void lerMAX30102() {
   if (!maxOK) return;
 
-  // Coleta amostras no buffer
-  for (int i = 0; i < BUFFER_LENGTH; i++) {
-    while (!particleSensor.available()) particleSensor.check();
-    redBuffer[i] = particleSensor.getRed();
-    irBuffer[i]  = particleSensor.getIR();
+  particleSensor.check(); // atualiza buffer interno sem bloquear
+  if (particleSensor.available()) {
+    irValue  = particleSensor.getIR();
+    redValue = particleSensor.getRed();
     particleSensor.nextSample();
   }
 
-  // Detecção de dedo pelo valor IR (>50000 = dedo presente)
-  dedoDetectado = (irBuffer[BUFFER_LENGTH - 1] > 50000);
+  // Limiar baixo para validar detecção: IR > 10000
+  dedoDetectado = (irValue > 10000);
 
-  if (dedoDetectado) {
-    maxim_heart_rate_and_oxygen_saturation(irBuffer, BUFFER_LENGTH, redBuffer,
-                                           &spo2_val, &spo2Valid,
-                                           &bpm_val,  &bpmValid);
-  } else {
-    bpm_val   = 0;
-    spo2_val  = 0;
-    bpmValid  = 0;
-    spo2Valid = 0;
+  Serial.print("IR: "); Serial.print(irValue);
+  Serial.print("  RED: "); Serial.print(redValue);
+  Serial.print("  Status: ");
+  Serial.println(dedoDetectado ? "Dedo detectado" : "Aguardando dedo");
+}
+
+// ─── MAX30102: desenhar tela estilo monitor médico ────────────────────────
+
+// Desenha o cabeçalho fixo (chamado apenas uma vez ao entrar na tela)
+void desenharCabecalhoMAX() {
+  tft.fillScreen(0x0000);
+
+  // Fundo do cabeçalho
+  tft.fillRect(0, 0, 240, 38, 0x0841); // cinza escuro quase preto
+
+  // "SYNAPSEA" centralizado
+  tft.setTextColor(0x07FF); // ciano
+  tft.setTextSize(2);
+  tft.setCursor(52, 4);
+  tft.print("SYNAPSEA");
+
+  // Subtítulo
+  tft.setTextColor(0x8410); // cinza médio
+  tft.setTextSize(1);
+  tft.setCursor(72, 24);
+  tft.print("Sinais Vitais");
+
+  // Linha separadora ciano
+  tft.fillRect(0, 38, 240, 2, 0x07FF);
+
+  // Rótulos fixos BPM e SpO2
+  tft.setTextColor(0xF800); // vermelho
+  tft.setTextSize(1);
+  tft.setCursor(14, 50);
+  tft.print("BPM");
+
+  tft.setTextColor(0x07FF); // ciano
+  tft.setCursor(134, 50);
+  tft.print("SpO2");
+
+  // Linha divisória vertical central
+  tft.fillRect(119, 42, 2, 110, 0x2104);
+
+  // Rótulo STATUS
+  tft.setTextColor(0x8410);
+  tft.setTextSize(1);
+  tft.setCursor(8, 165);
+  tft.print("STATUS");
+
+  // Rótulo ECG
+  tft.setTextColor(0x8410);
+  tft.setCursor(8, 213);
+  tft.print("ECG");
+
+  // Borda ECG
+  tft.drawRect(0, 222, 240, 58, 0x2104);
+}
+
+void desenharValoresMAX(bool forcar) {
+  // ── Status / dedo ──────────────────────────────────────────────────────
+  bool mudouEstado = (dedoDetectado != prevDedo_d) || (maxOK != prevMaxOK_d) || forcar;
+
+  if (mudouEstado) {
+    tft.fillRect(0, 172, 240, 38, 0x0000);
+
+    if (!maxOK) {
+      // Fundo vermelho escuro
+      tft.fillRoundRect(6, 173, 228, 33, 5, 0x2000);
+      tft.setTextColor(0xF800);
+      tft.setTextSize(2);
+      tft.setCursor(52, 181);
+      tft.print("SEM SENSOR");
+    } else if (!dedoDetectado) {
+      // Fundo amarelo escuro
+      tft.fillRoundRect(6, 173, 228, 33, 5, 0x2200);
+      tft.setTextColor(0xFFE0);
+      tft.setTextSize(2);
+      tft.setCursor(42, 181);
+      tft.print("SEM LEITURA");
+    } else {
+      // Fundo verde escuro
+      tft.fillRoundRect(6, 173, 228, 33, 5, 0x0240);
+      tft.setTextColor(0x07E0);
+      tft.setTextSize(2);
+      tft.setCursor(76, 181);
+      tft.print("NORMAL");
+    }
+    prevDedo_d  = dedoDetectado;
+    prevMaxOK_d = maxOK;
+  }
+
+  // ── BPM ────────────────────────────────────────────────────────────────
+  // Lê BPM das variáveis globais (placeholder por enquanto)
+  int bpmDisp = dedoDetectado ? (int)((irValue / 1000) % 60 + 60) : 0; // placeholder visual
+  // (será substituído por bpm_val real na próxima etapa)
+
+  if (bpmDisp != prevBPM_d || forcar) {
+    tft.fillRect(6, 58, 108, 56, 0x0000);
+    if (dedoDetectado) {
+      tft.setTextColor(0xF800);
+      tft.setTextSize(1);
+      tft.setCursor(14, 60);
+      // Ícone coração simplificado
+      tft.print("\3"); // char coração não suportado: usamos número direto
+      tft.setTextColor(0xF800);
+      tft.setTextSize(5);
+      // Centraliza número de 2-3 dígitos
+      int bx = (bpmDisp < 100) ? 22 : 8;
+      tft.setCursor(bx, 68);
+      tft.print(bpmDisp);
+    } else {
+      tft.setTextColor(0x4208);
+      tft.setTextSize(4);
+      tft.setCursor(22, 72);
+      tft.print("--");
+    }
+    prevBPM_d = bpmDisp;
+  }
+
+  // ── SpO2 ───────────────────────────────────────────────────────────────
+  int spo2Disp = dedoDetectado ? 98 : 0; // placeholder visual
+
+  if (spo2Disp != prevSpo2_d || forcar) {
+    tft.fillRect(122, 58, 118, 56, 0x0000);
+    if (dedoDetectado) {
+      tft.setTextColor(0x07FF);
+      tft.setTextSize(4);
+      tft.setCursor(128, 68);
+      tft.print(spo2Disp);
+      tft.setTextSize(2);
+      tft.setCursor(196, 78);
+      tft.print("%");
+    } else {
+      tft.setTextColor(0x4208);
+      tft.setTextSize(4);
+      tft.setCursor(140, 72);
+      tft.print("--");
+    }
+    prevSpo2_d = spo2Disp;
   }
 }
 
-// ─── MAX30102: desenhar tela de sinais vitais ─────────────────────────────
+void atualizarECG() {
+  // Gera amostra ECG baseada na variação do IR
+  long delta = irValue - prevIR;
+  prevIR = irValue;
+
+  // Normaliza delta para amplitude da área ECG (±20px)
+  int amostra = constrain((int)(delta / 500), -18, 18);
+  ecgBuf[ecgPos] = amostra;
+
+  // Redesenha apenas a coluna atual e apaga a próxima (efeito scroll)
+  int x = ecgPos + 10; // margem interna
+  int midY = ECG_Y + ECG_H / 2;
+
+  // Apaga coluna atual e próxima
+  tft.fillRect(x, ECG_Y, 2, ECG_H, 0x0000);
+  tft.fillRect((x + 4) % ECG_W + 10, ECG_Y, 3, ECG_H, 0x0000);
+
+  // Desenha ponto ECG
+  int y1 = midY - ecgBuf[(ecgPos + ECG_W - 1) % ECG_W];
+  int y2 = midY - amostra;
+  y1 = constrain(y1, ECG_Y + 2, ECG_Y + ECG_H - 3);
+  y2 = constrain(y2, ECG_Y + 2, ECG_Y + ECG_H - 3);
+
+  uint16_t cor = dedoDetectado ? 0x07E0 : 0x2104; // verde se dedo, cinza se não
+  tft.drawLine(x - 1, y1, x, y2, cor);
+
+  ecgPos = (ecgPos + 1) % ECG_W;
+}
+
 void desenharTelaMAX() {
-  // Título
-  tft.fillRect(0, 0, 240, 40, 0x1082); // fundo azul escuro
-  tft.setTextColor(0xFFFF);
-  tft.setTextSize(2);
-  tft.setCursor(10, 10);
-  tft.print("Synapsea - Vitais");
-
-  // Linha separadora
-  tft.fillRect(0, 40, 240, 2, 0x4A69);
-
-  // Status do dedo
-  String statusStr;
-  uint16_t statusColor;
-  if (!maxOK) {
-    statusStr   = "Sensor ausente";
-    statusColor = 0xF800; // vermelho
-  } else if (!dedoDetectado) {
-    statusStr   = "Aguardando dedo";
-    statusColor = 0xFFE0; // amarelo
-  } else {
-    statusStr   = "Dedo detectado ";
-    statusColor = 0x07E0; // verde
-  }
-  tft.fillRect(0, 50, 240, 30, 0x0000);
-  tft.setTextColor(statusColor);
-  tft.setTextSize(2);
-  tft.setCursor(10, 55);
-  tft.print(statusStr);
-
-  // BPM
-  tft.fillRect(0, 95, 240, 50, 0x0000);
-  tft.setTextColor(0xF800); // vermelho
-  tft.setTextSize(2);
-  tft.setCursor(10, 100);
-  tft.print("BPM:  ");
-  if (dedoDetectado && bpmValid && bpm_val > 20 && bpm_val < 250) {
-    tft.setTextSize(3);
-    tft.print(bpm_val);
-  } else {
-    tft.setTextSize(3);
-    tft.print("--");
+  static bool primeiraVez = true;
+  if (primeiraVez) {
+    desenharCabecalhoMAX();
+    primeiraVez = false;
+    prevBPM_d  = -999;
+    prevSpo2_d = -999;
   }
 
-  // SpO2
-  tft.fillRect(0, 155, 240, 50, 0x0000);
-  tft.setTextColor(0x07FF); // ciano
-  tft.setTextSize(2);
-  tft.setCursor(10, 160);
-  tft.print("SpO2: ");
-  if (dedoDetectado && spo2Valid && spo2_val > 0 && spo2_val <= 100) {
-    tft.setTextSize(3);
-    tft.print(spo2_val);
-    tft.print("%");
-  } else {
-    tft.setTextSize(3);
-    tft.print("--");
-  }
-
-  // Valores brutos IR / RED
-  tft.fillRect(0, 215, 240, 60, 0x0000);
-  tft.setTextColor(0x8410); // cinza
-  tft.setTextSize(1);
-  tft.setCursor(10, 220);
-  tft.print("IR:  ");
-  tft.print(irBuffer[BUFFER_LENGTH - 1]);
-  tft.setCursor(10, 235);
-  tft.print("RED: ");
-  tft.print(redBuffer[BUFFER_LENGTH - 1]);
+  desenharValoresMAX(false);
+  atualizarECG();
 }
