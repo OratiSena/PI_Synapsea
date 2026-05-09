@@ -89,6 +89,7 @@ float dest_2d[INTERPOLATED_ROWS * INTERPOLATED_COLS];
 // const unsigned long intervaloEnvio = 1000;
 
 // ─── MAX30102 ──────────────────────────────────────────────────────────────
+TwoWire I2C_MAX = TwoWire(1); // Segundo barramento I2C exclusivo para o MAX30102 (GPIO25/GPIO26)
 MAX30105 particleSensor;
 
 #define BUFFER_LENGTH 100
@@ -145,15 +146,11 @@ void setup() {
 
   colorbar();
 
+  // Botão de troca de tela
+  pinMode(BTN_PIN, INPUT_PULLUP);
 
-
-  // /* BANCO DE DADOS - DESATIVADO TEMPORARIAMENTE */
-  // WiFi.begin(ssid, password);
-  // while (WiFi.status() != WL_CONNECTED) {
-  //   delay(1000);
-  //   Serial.println("Conectando ao WiFi...");
-  // }
-  // Serial.println("WiFi conectado.");
+  // Inicializar MAX30102 no segundo barramento I2C
+  iniciarMAX30102();
 }
 
 
@@ -198,63 +195,56 @@ void interpolate_linear_image(float *src, uint8_t src_rows, uint8_t src_cols,
 
 
 void loop() {
-  amg.readPixels(pixels2);
-  for (int i = 0; i < 64; i++)
-    pixels[i] = pixels2[(((int)(i / 8) * 8) + 7 - (i % 8))] + OFFSET_TEMP;
+  verificarBotaoTrocaTela();
 
+  if (telaAtual == 0) {
+    // ── Tela térmica AMG8833 (lógica original intacta) ──────────────────────
+    amg.readPixels(pixels2);
+    for (int i = 0; i < 64; i++)
+      pixels[i] = pixels2[(((int)(i / 8) * 8) + 7 - (i % 8))] + OFFSET_TEMP;
 
-  if (MODE_INTERPOLATION == 2) {
-    interpolate_image(pixels, AMG_ROWS, AMG_COLS, dest_2d, INTERPOLATED_ROWS, INTERPOLATED_COLS);
-  } else if (MODE_INTERPOLATION == 1) {
-    interpolate_linear_image(pixels, AMG_ROWS, AMG_COLS, dest_2d, INTERPOLATED_ROWS, INTERPOLATED_COLS);
-  } else {
-    for (int y = 0; y < INTERPOLATED_ROWS; y++) {
-      for (int x = 0; x < INTERPOLATED_COLS; x++) {
-        int origX = map(x, 0, INTERPOLATED_COLS - 1, 0, AMG_COLS - 1);
-        int origY = map(y, 0, INTERPOLATED_ROWS - 1, 0, AMG_ROWS - 1);
-        float val = get_point(pixels, AMG_ROWS, AMG_COLS, origX, origY);
-        set_point(dest_2d, INTERPOLATED_ROWS, INTERPOLATED_COLS, x, y, val);
+    if (MODE_INTERPOLATION == 2) {
+      interpolate_image(pixels, AMG_ROWS, AMG_COLS, dest_2d, INTERPOLATED_ROWS, INTERPOLATED_COLS);
+    } else if (MODE_INTERPOLATION == 1) {
+      interpolate_linear_image(pixels, AMG_ROWS, AMG_COLS, dest_2d, INTERPOLATED_ROWS, INTERPOLATED_COLS);
+    } else {
+      for (int y = 0; y < INTERPOLATED_ROWS; y++) {
+        for (int x = 0; x < INTERPOLATED_COLS; x++) {
+          int origX = map(x, 0, INTERPOLATED_COLS - 1, 0, AMG_COLS - 1);
+          int origY = map(y, 0, INTERPOLATED_ROWS - 1, 0, AMG_ROWS - 1);
+          float val = get_point(pixels, AMG_ROWS, AMG_COLS, origX, origY);
+          set_point(dest_2d, INTERPOLATED_ROWS, INTERPOLATED_COLS, x, y, val);
+        }
       }
     }
+
+    //smooth3x3(dest_2d, INTERPOLATED_ROWS, INTERPOLATED_COLS);
+
+    uint16_t boxSize = min(tft.width() / INTERPOLATED_COLS, 240 / INTERPOLATED_ROWS);
+    drawpixels(dest_2d, INTERPOLATED_ROWS, INTERPOLATED_COLS, boxSize, boxSize, false);
+
+    tft.fillRect(0, 250, 240, 30, 0x0000);
+    tft.setTextColor(0xFFFF);
+    tft.setCursor(0, 250);
+    tft.setTextSize(3);
+    tft.print("MAX:");
+    tft.print(pix_max);
+    tft.print(" C");
+
+    tft.drawCircle(pos_x, pos_y, 6, 0);
+    tft.drawLine(pos_x - 3, pos_y, pos_x + 3, pos_y, 0);
+    tft.drawLine(pos_x, pos_y - 3, pos_x, pos_y + 3, 0);
+    pix_max = 0;
+    delay(50);
+
+  } else {
+    // ── Tela do MAX30102 ────────────────────────────────────────────────────
+    if (millis() - ultimaAtualizacaoMAX >= intervaloAtualizacaoMAX) {
+      lerMAX30102();
+      desenharTelaMAX();
+      ultimaAtualizacaoMAX = millis();
+    }
   }
-
-  //smooth3x3(dest_2d, INTERPOLATED_ROWS, INTERPOLATED_COLS); /* DESATIVAR CASO: tiver pouca nitidez */
-
-
-  uint16_t boxSize = min(tft.width() / INTERPOLATED_COLS, 240 / INTERPOLATED_ROWS);
-  drawpixels(dest_2d, INTERPOLATED_ROWS, INTERPOLATED_COLS, boxSize, boxSize, false);
-
-  tft.fillRect(0, 250, 240, 30, 0x0000);  // limpa fundo
-  tft.setTextColor(0xFFFF);
-  tft.setCursor(0, 250);
-  tft.setTextSize(3);
-  tft.print("MAX:");
-  tft.print(pix_max);
-  tft.print(" C");
-
-  tft.drawCircle(pos_x, pos_y, 6, 0);
-  tft.drawLine(pos_x - 3, pos_y, pos_x + 3, pos_y, 0);
-  tft.drawLine(pos_x, pos_y - 3, pos_x, pos_y + 3, 0);
-  pix_max = 0;
-  delay(50);
-
-
-
-  // /* BANCO DE DADOS - DESATIVADO TEMPORARIAMENTE */
-  // float soma = 0;
-  // float minTemp = 1000;
-  // float maxTemp = -1000;
-  // for (int i = 0; i < INTERPOLATED_ROWS * INTERPOLATED_COLS; i++) {
-  //   float val = dest_2d[i];
-  //   soma += val;
-  //   if (val < minTemp) minTemp = val;
-  //   if (val > maxTemp) maxTemp = val;
-  // }
-  // float mediaTemp = soma / (INTERPOLATED_ROWS * INTERPOLATED_COLS);
-  // if (millis() - ultimoEnvio >= intervaloEnvio) {
-  //   enviarDadosParaServidor(maxTemp, dest_2d, INTERPOLATED_ROWS, INTERPOLATED_COLS);
-  //   ultimoEnvio = millis();
-  // }
 }
 
 
@@ -398,18 +388,130 @@ void colorbar() {
 
 
 // /* BANCO DE DADOS - DESATIVADO TEMPORARIAMENTE */
-// void enviarDadosParaServidor(float maxTemp, float *matriz, int linhas, int colunas) {
-//   if (WiFi.status() == WL_CONNECTED) {
-//     HTTPClient http;
-//     http.begin("https://thermotrack.ganhemaishoje.com.br/inserirdados.php");
-//     http.addHeader("Content-Type", "application/json");
-//     String json = "{\"dispositivo_id\":1";
-//     json += ",\"temperatura_max\":" + String(maxTemp, 2);
-//     json += ",\"imagem_base64\":\"data:image/png;base64," + imagem_base64_fake + "\"}";
-//     int httpResponseCode = http.POST(json);
-//     Serial.print("Código resposta: ");
-//     Serial.println(httpResponseCode);
-//     Serial.println("Resposta: " + http.getString());
-//     http.end();
-//   }
-// }
+// void enviarDadosParaServidor(float maxTemp, float *matriz, int linhas, int colunas) { ... }
+
+// ─── Botão: troca de tela com debounce ────────────────────────────────────
+void verificarBotaoTrocaTela() {
+  bool btnAtual = digitalRead(BTN_PIN);
+  if (btnAtual == LOW && btnAnterior == HIGH && (millis() - ultimoDebounce > debounceDelay)) {
+    ultimoDebounce = millis();
+    telaAtual = (telaAtual == 0) ? 1 : 0;
+    tft.fillScreen(0x0000); // limpa tela ao trocar
+    if (telaAtual == 0) colorbar(); // restaura barra de cores na tela térmica
+  }
+  btnAnterior = btnAtual;
+}
+
+// ─── MAX30102: inicialização ───────────────────────────────────────────────
+void iniciarMAX30102() {
+  I2C_MAX.begin(25, 26); // SDA=GPIO25, SCL=GPIO26 (barramento separado do AMG8833)
+  if (!particleSensor.begin(I2C_MAX, I2C_SPEED_STANDARD)) {
+    Serial.println("MAX30102 nao encontrado em GPIO25/GPIO26");
+    maxOK = false;
+    return;
+  }
+  particleSensor.setup();                       // configuração padrão
+  particleSensor.setPulseAmplitudeRed(0x0A);   // LED vermelho baixo (modo teste)
+  particleSensor.setPulseAmplitudeGreen(0);    // desliga LED verde (não usado)
+  maxOK = true;
+  Serial.println("MAX30102 inicializado em GPIO25/GPIO26");
+}
+
+// ─── MAX30102: leitura de IR, RED e cálculo de BPM/SpO2 ──────────────────
+void lerMAX30102() {
+  if (!maxOK) return;
+
+  // Coleta amostras no buffer
+  for (int i = 0; i < BUFFER_LENGTH; i++) {
+    while (!particleSensor.available()) particleSensor.check();
+    redBuffer[i] = particleSensor.getRed();
+    irBuffer[i]  = particleSensor.getIR();
+    particleSensor.nextSample();
+  }
+
+  // Detecção de dedo pelo valor IR (>50000 = dedo presente)
+  dedoDetectado = (irBuffer[BUFFER_LENGTH - 1] > 50000);
+
+  if (dedoDetectado) {
+    maxim_heart_rate_and_oxygen_saturation(irBuffer, BUFFER_LENGTH, redBuffer,
+                                           &spo2_val, &spo2Valid,
+                                           &bpm_val,  &bpmValid);
+  } else {
+    bpm_val   = 0;
+    spo2_val  = 0;
+    bpmValid  = 0;
+    spo2Valid = 0;
+  }
+}
+
+// ─── MAX30102: desenhar tela de sinais vitais ─────────────────────────────
+void desenharTelaMAX() {
+  // Título
+  tft.fillRect(0, 0, 240, 40, 0x1082); // fundo azul escuro
+  tft.setTextColor(0xFFFF);
+  tft.setTextSize(2);
+  tft.setCursor(10, 10);
+  tft.print("Synapsea - Vitais");
+
+  // Linha separadora
+  tft.fillRect(0, 40, 240, 2, 0x4A69);
+
+  // Status do dedo
+  String statusStr;
+  uint16_t statusColor;
+  if (!maxOK) {
+    statusStr   = "Sensor ausente";
+    statusColor = 0xF800; // vermelho
+  } else if (!dedoDetectado) {
+    statusStr   = "Aguardando dedo";
+    statusColor = 0xFFE0; // amarelo
+  } else {
+    statusStr   = "Dedo detectado ";
+    statusColor = 0x07E0; // verde
+  }
+  tft.fillRect(0, 50, 240, 30, 0x0000);
+  tft.setTextColor(statusColor);
+  tft.setTextSize(2);
+  tft.setCursor(10, 55);
+  tft.print(statusStr);
+
+  // BPM
+  tft.fillRect(0, 95, 240, 50, 0x0000);
+  tft.setTextColor(0xF800); // vermelho
+  tft.setTextSize(2);
+  tft.setCursor(10, 100);
+  tft.print("BPM:  ");
+  if (dedoDetectado && bpmValid && bpm_val > 20 && bpm_val < 250) {
+    tft.setTextSize(3);
+    tft.print(bpm_val);
+  } else {
+    tft.setTextSize(3);
+    tft.print("--");
+  }
+
+  // SpO2
+  tft.fillRect(0, 155, 240, 50, 0x0000);
+  tft.setTextColor(0x07FF); // ciano
+  tft.setTextSize(2);
+  tft.setCursor(10, 160);
+  tft.print("SpO2: ");
+  if (dedoDetectado && spo2Valid && spo2_val > 0 && spo2_val <= 100) {
+    tft.setTextSize(3);
+    tft.print(spo2_val);
+    tft.print("%");
+  } else {
+    tft.setTextSize(3);
+    tft.print("--");
+  }
+
+  // Valores brutos IR / RED
+  tft.fillRect(0, 215, 240, 60, 0x0000);
+  tft.setTextColor(0x8410); // cinza
+  tft.setTextSize(1);
+  tft.setCursor(10, 220);
+  tft.print("IR:  ");
+  tft.print(irBuffer[BUFFER_LENGTH - 1]);
+  tft.setCursor(10, 235);
+  tft.print("RED: ");
+  tft.print(redBuffer[BUFFER_LENGTH - 1]);
+}
