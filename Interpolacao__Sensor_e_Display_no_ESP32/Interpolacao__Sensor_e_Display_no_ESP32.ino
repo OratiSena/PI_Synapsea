@@ -97,10 +97,10 @@ bool     dedoDetectado = false;
 long     irValue       = 0;
 long     redValue      = 0;
 
-// ─── ECG fake ─────────────────────────────────────────────────────────────
+// ─── PPG / ECG scrolling ──────────────────────────────────────────────────
 #define ECG_W   220
-#define ECG_Y   255
-#define ECG_H    40
+#define ECG_Y   228
+#define ECG_H    80
 int  ecgBuf[ECG_W]   = {0};
 int  ecgPos          = 0;
 long prevIR          = 0;
@@ -110,6 +110,63 @@ int   prevBPM_d      = -999;
 int   prevSpo2_d     = -999;
 bool  prevDedo_d     = false;
 bool  prevMaxOK_d    = false;
+float prevPI_d       = -1.0f;
+int   prevQual_d     = -1;
+int   prevHRV_d      = -999;
+
+// ─── Cálculo real de BPM ──────────────────────────────────────────────────
+#define BPM_BUF_SIZE 8           // Mais amostras = média mais estável
+float         bpmBuffer[BPM_BUF_SIZE] = {0};
+int           bpmBufIdx               = 0;
+int           bpmBufCount             = 0;
+unsigned long ultimoBeat              = 0;
+unsigned long ultimaVezComDedo        = 0; // histerese: ultima vez que irValue > 10000
+int           bpmReal                 = 0;
+
+// ─── SpO2 e PI ────────────────────────────────────────────────────────────
+int   spo2Real = 0;
+float piVal    = 0.0f;
+
+// Buffers de suavização para SpO2 e PI
+#define SPO2_BUF_SIZE 5
+int   spo2Buffer[SPO2_BUF_SIZE] = {0};
+int   spo2BufIdx   = 0;
+int   spo2BufCount = 0;
+
+#define PI_BUF_SIZE 5
+float piBuffer[PI_BUF_SIZE] = {0.0f};
+int   piBufIdx   = 0;
+int   piBufCount = 0;
+
+// ─── Filtros IIR + detecção de batimento (baseado em codigo_da_internet.ino) ──
+// Fs efetiva do MAX30102 com setup() padrão: 400sps / avg4 = 100 sps
+const float kSampFreq   = 100.0f;
+const float kEdgeThresh = -500.0f; // limiar do diferenciador para confirmar batida
+float kLPF_a0, kLPF_b1;           // coeficientes LPF @ 5 Hz
+float kHPF_a0, kHPF_a1, kHPF_b1;  // coeficientes HPF @ 0.5 Hz
+
+bool  filtrosInit  = false; // filtros prontos para uso
+float lpf_red, lpf_ir;     // estado do LPF
+float hpf_raw, hpf_out;    // estado do HPF
+float dif_prev;             // estado do diferenciador
+
+float         zc_lastDiff  = 0.0f;
+bool          zc_crossed   = false;
+unsigned long zc_crossedAt = 0;
+
+// MinMax por ciclo entre batidas (para SpO2 e PI)
+float mm_red_min, mm_red_max, mm_red_sum;  int mm_red_n = 0;
+float mm_ir_min,  mm_ir_max,  mm_ir_sum;   int mm_ir_n  = 0;
+
+// ─── Qualidade do sinal: 0=sem dedo, 1=fraco, 2=bom ──────────────────────
+int   qualSinal        = 0;
+
+// ─── HRV (RMSSD) ─────────────────────────────────────────────────────────
+#define RR_BUF_SIZE 15
+long  rrBuf[RR_BUF_SIZE] = {0};
+int   rrBufIdx            = 0;
+int   rrBufCount          = 0;
+int   hrvRMSSD            = 0; // ms
 
 // ─── Botão e controle de tela ──────────────────────────────────────────────
 #define BTN_PIN 27
@@ -118,7 +175,8 @@ bool btnAnterior                            = HIGH;
 unsigned long ultimoDebounce                = 0;
 const unsigned long debounceDelay           = 300;
 unsigned long ultimaAtualizacaoMAX          = 0;
-const unsigned long intervaloAtualizacaoMAX = 300;
+const unsigned long intervaloAtualizacaoMAX = 500;
+unsigned long ultimoDebugMAX                = 0;
 
 
 
@@ -130,6 +188,7 @@ const unsigned long intervaloAtualizacaoMAX = 300;
 void verificarBotaoTrocaTela();
 void iniciarMAX30102();
 void scannerI2CMAX();
+void initFiltros();
 void lerMAX30102();
 void desenharTelaMAX();
 void desenharCabecalhoMAX();
@@ -261,8 +320,10 @@ void loop() {
 
   } else {
     // ── Tela do MAX30102 ────────────────────────────────────────────────────
+    // Lê o sensor em CADA iteração do loop para não deixar o FIFO transbordar
+    // (FIFO = 32 amostras @ ~100sps → overflow em ~320ms; display a cada 500ms causava perda de dados)
+    lerMAX30102();
     if (millis() - ultimaAtualizacaoMAX >= intervaloAtualizacaoMAX) {
-      lerMAX30102();
       desenharTelaMAX();
       ultimaAtualizacaoMAX = millis();
     }
@@ -425,6 +486,9 @@ void verificarBotaoTrocaTela() {
       // Força redesenho completo ao entrar na tela do MAX
       prevBPM_d  = -999;
       prevSpo2_d = -999;
+      prevPI_d   = -1.0f;
+      prevQual_d = -1;
+      prevHRV_d  = -999;
       prevDedo_d  = false;
       prevMaxOK_d = false;
       desenharCabecalhoMAX();
@@ -456,32 +520,212 @@ void iniciarMAX30102() {
     maxOK = false;
     return;
   }
+  // Configuracao padrao SparkFun (powerLevel=0x1F ~6mA, avg=4, RED+IR+Green, 400sps, 411us, adcRange=16384)
+  // Comprovadamente compativel com threshold 10000 para deteccao de dedo
   particleSensor.setup();
-  particleSensor.setPulseAmplitudeRed(0x1F);
-  particleSensor.setPulseAmplitudeIR(0x1F);
-  particleSensor.setPulseAmplitudeGreen(0);
+  particleSensor.setPulseAmplitudeRed(0x1F);  // LED vermelho máximo
+  particleSensor.setPulseAmplitudeIR(0x1F);   // LED IR máximo
+  particleSensor.setPulseAmplitudeGreen(0);   // desliga LED verde
   maxOK = true;
+  initFiltros();
   Serial.println("MAX30102 encontrado e inicializado em GPIO25/GPIO26");
 }
 
-// ─── MAX30102: leitura raw de IR e RED (modo depuração) ──────────────────
+// ─── Inicializa coeficientes e estado de todos os filtros ─────────────────
+void initFiltros() {
+  const float pi2 = 6.28318530f;
+  // LPF @ 5 Hz
+  float lx = expf(-1.0f / (kSampFreq / (5.0f  * pi2)));
+  kLPF_a0 = 1.0f - lx;  kLPF_b1 = lx;
+  // HPF @ 0.5 Hz
+  float hx = expf(-1.0f / (kSampFreq / (0.5f  * pi2)));
+  kHPF_a0 = (1.0f + hx) / 2.0f;  kHPF_a1 = -kHPF_a0;  kHPF_b1 = hx;
+  // Reset estados
+  filtrosInit  = false;
+  zc_crossed   = false;
+  zc_crossedAt = 0;
+  zc_lastDiff  = 0.0f;
+  mm_red_n = 0;  mm_red_sum = 0.0f;
+  mm_ir_n  = 0;  mm_ir_sum  = 0.0f;
+  spo2BufCount = 0;  spo2BufIdx = 0;
+  piBufCount   = 0;  piBufIdx   = 0;
+}
+
+// ─── MAX30102: leitura com BPM, SpO2, PI e HRV (filtros IIR) ──────────────
 void lerMAX30102() {
   if (!maxOK) return;
 
-  particleSensor.check(); // atualiza buffer interno sem bloquear
-  if (particleSensor.available()) {
-    irValue  = particleSensor.getIR();
-    redValue = particleSensor.getRed();
+  particleSensor.check();
+
+  while (particleSensor.available()) {
+    long ir  = particleSensor.getIR();
+    long red = particleSensor.getRed();
     particleSensor.nextSample();
+
+    irValue  = ir;
+    redValue = red;
+
+    unsigned long agora = millis();
+
+    // ── Histerese de dedo (1.5 s) ──────────────────────────────────────────
+    if (ir > 10000) ultimaVezComDedo = agora;
+    dedoDetectado = (agora - ultimaVezComDedo < 1500);
+
+    // ── Reset completo após 3 s sem dedo ──────────────────────────────────
+    if (!dedoDetectado && (agora - ultimaVezComDedo > 3000)) {
+      initFiltros();
+      bpmReal = 0;  bpmBufCount = 0;  bpmBufIdx = 0;
+      spo2Real = 0; piVal = 0.0f;
+      spo2BufCount = 0;  spo2BufIdx = 0;
+      piBufCount   = 0;  piBufIdx   = 0;
+      hrvRMSSD = 0; rrBufCount = 0;   rrBufIdx  = 0;
+      ultimoBeat = 0;
+      continue;
+    }
+
+    if (!dedoDetectado) continue;
+
+    // ── Inicialização dos filtros na primeira amostra válida ──────────────
+    if (!filtrosInit) {
+      lpf_red = (float)red;  lpf_ir  = (float)ir;
+      hpf_raw = lpf_red;     hpf_out = 0.0f;
+      dif_prev = 0.0f;
+      filtrosInit = true;
+      continue; // descarta primeira amostra (apenas inicialização)
+    }
+
+    // ── LOW-PASS FILTER (5 Hz) — remove ruído de alta frequência ─────────
+    lpf_red = kLPF_a0 * (float)red + kLPF_b1 * lpf_red;
+    lpf_ir  = kLPF_a0 * (float)ir  + kLPF_b1 * lpf_ir;
+
+    // ── ESTATÍSTICA MIN/MAX por ciclo de batida (SpO2 / PI) ───────────────
+    if (mm_red_n == 0) { mm_red_min = mm_red_max = lpf_red; }
+    else { mm_red_min = min(mm_red_min, lpf_red);  mm_red_max = max(mm_red_max, lpf_red); }
+    mm_red_sum += lpf_red;  mm_red_n++;
+
+    if (mm_ir_n == 0) { mm_ir_min = mm_ir_max = lpf_ir; }
+    else { mm_ir_min = min(mm_ir_min, lpf_ir);  mm_ir_max = max(mm_ir_max, lpf_ir); }
+    mm_ir_sum += lpf_ir;  mm_ir_n++;
+
+    // ── HIGH-PASS FILTER (0.5 Hz) — remove baseline DC ───────────────────
+    float red_hp = kHPF_a0 * lpf_red + kHPF_a1 * hpf_raw + kHPF_b1 * hpf_out;
+    hpf_raw = lpf_red;
+    hpf_out = red_hp;
+
+    // ── DIFERENCIADOR ─────────────────────────────────────────────────────
+    float curDiff = (red_hp - dif_prev) * kSampFreq;
+    dif_prev = red_hp;
+
+    // ── DETECÇÃO DE BATIMENTO: zero-crossing + limiar de queda ────────────
+    // Zero-crossing: slope positivo → negativo (pico do PPG invertido)
+    if (zc_lastDiff > 0.0f && curDiff < 0.0f) {
+      zc_crossed   = true;
+      zc_crossedAt = agora;
+    }
+    if (curDiff > 0.0f) zc_crossed = false;
+
+    // Confirma batida quando o diferenciador cai abaixo do limiar
+    if (zc_crossed && curDiff < kEdgeThresh) {
+      long delta = (long)(zc_crossedAt - ultimoBeat);
+      if (ultimoBeat > 0 && delta > 300 && delta < 2000) {
+
+        // ── BPM ────────────────────────────────────────────────────────
+        float bpmInst = 60000.0f / (float)delta;
+        if (bpmInst >= 40.0f && bpmInst <= 180.0f) {
+          // Rejeita outliers: se já há ≥4 amostras e o valor desvia >30% da média atual, descarta
+          bool bpmValido = true;
+          if (bpmBufCount >= 4) {
+            float somaAtual = 0.0f;
+            for (int i = 0; i < bpmBufCount; i++) somaAtual += bpmBuffer[i];
+            float mediaAtual = somaAtual / bpmBufCount;
+            if (fabsf(bpmInst - mediaAtual) > mediaAtual * 0.30f) bpmValido = false;
+          }
+          if (bpmValido) {
+            bpmBuffer[bpmBufIdx] = bpmInst;
+            bpmBufIdx = (bpmBufIdx + 1) % BPM_BUF_SIZE;
+            if (bpmBufCount < BPM_BUF_SIZE) bpmBufCount++;
+            // Só exibe BPM após 4 amostras válidas acumuladas (evita picos iniciais)
+            if (bpmBufCount >= 4) {
+              float soma = 0.0f;
+              for (int i = 0; i < bpmBufCount; i++) soma += bpmBuffer[i];
+              bpmReal = (int)(soma / bpmBufCount + 0.5f);
+            }
+          }
+        }
+
+        // ── HRV (RMSSD) ────────────────────────────────────────────────
+        rrBuf[rrBufIdx] = delta;
+        rrBufIdx = (rrBufIdx + 1) % RR_BUF_SIZE;
+        if (rrBufCount < RR_BUF_SIZE) rrBufCount++;
+        if (rrBufCount >= 2) {
+          long sumSq = 0;  int pairs = rrBufCount - 1;
+          for (int k = 0; k < pairs; k++) {
+            int i0 = (rrBufIdx - rrBufCount + k + RR_BUF_SIZE) % RR_BUF_SIZE;
+            int i1 = (i0 + 1) % RR_BUF_SIZE;
+            long d = rrBuf[i1] - rrBuf[i0];
+            sumSq += d * d;
+          }
+          hrvRMSSD = (int)sqrtf((float)sumSq / pairs);
+        }
+
+        // ── SpO2 e PI (usando min/max do ciclo de batida) ──────────────
+        if (mm_red_n > 5 && mm_ir_n > 5) {
+          float redAC = mm_red_max - mm_red_min;
+          float redDC = mm_red_sum / (float)mm_red_n;
+          float irAC  = mm_ir_max  - mm_ir_min;
+          float irDC  = mm_ir_sum  / (float)mm_ir_n;
+          // PI: limita a 20% (valores acima são artefatos de pressão/movimento)
+          if (irDC > 0.0f) {
+            float piInst = constrain((irAC / irDC) * 100.0f, 0.0f, 20.0f);
+            piBuffer[piBufIdx] = piInst;
+            piBufIdx = (piBufIdx + 1) % PI_BUF_SIZE;
+            if (piBufCount < PI_BUF_SIZE) piBufCount++;
+            float somaPI = 0.0f;
+            for (int i = 0; i < piBufCount; i++) somaPI += piBuffer[i];
+            piVal = somaPI / piBufCount;
+          }
+          if (irAC > 0.0f && irDC > 0.0f && redDC > 0.0f && redAC > 0.0f) {
+            float R     = (redAC / redDC) / (irAC / irDC);
+            // Calibração SpO2 do Maxim AN6845 (mesma do codigo_da_internet.ino)
+            float spo2f = 1.5958422f * R * R - 34.6596622f * R + 112.6898759f;
+            int spo2Inst = constrain((int)(spo2f + 0.5f), 70, 100);
+            spo2Buffer[spo2BufIdx] = spo2Inst;
+            spo2BufIdx = (spo2BufIdx + 1) % SPO2_BUF_SIZE;
+            if (spo2BufCount < SPO2_BUF_SIZE) spo2BufCount++;
+            int somaS = 0;
+            for (int i = 0; i < spo2BufCount; i++) somaS += spo2Buffer[i];
+            spo2Real = somaS / spo2BufCount;
+          }
+        }
+        // Reset MinMax para o próximo ciclo de batida
+        mm_red_n = 0;  mm_red_sum = 0.0f;
+        mm_ir_n  = 0;  mm_ir_sum  = 0.0f;
+      }
+      zc_crossed = false;
+      ultimoBeat = zc_crossedAt;
+    }
+
+    zc_lastDiff = curDiff;
   }
 
-  // Limiar baixo para validar detecção: IR > 10000
-  dedoDetectado = (irValue > 10000);
+  // ── Qualidade do sinal ─────────────────────────────────────────────────
+  if (!dedoDetectado)                    qualSinal = 0;
+  else if (piVal < 0.3f || bpmReal == 0) qualSinal = 1;
+  else                                   qualSinal = 2;
 
-  Serial.print("IR: "); Serial.print(irValue);
-  Serial.print("  RED: "); Serial.print(redValue);
-  Serial.print("  Status: ");
-  Serial.println(dedoDetectado ? "Dedo detectado" : "Aguardando dedo");
+  // ── Debug a cada 5 s ──────────────────────────────────────────────────
+  unsigned long agoraNow = millis();
+  if (agoraNow - ultimoDebugMAX >= 5000) {
+    ultimoDebugMAX = agoraNow;
+    Serial.print("IR=");   Serial.print(irValue);
+    Serial.print(" RED="); Serial.print(redValue);
+    Serial.print(" DEDO="); Serial.print(dedoDetectado);
+    Serial.print(" BPM="); Serial.print(bpmReal);
+    Serial.print(" SpO2="); Serial.print(spo2Real);
+    Serial.print(" PI=");  Serial.print(piVal, 1);
+    Serial.print(" HRV=");
+    if (hrvRMSSD > 0) Serial.println(hrvRMSSD); else Serial.println("--");
+  }
 }
 
 // ─── MAX30102: desenhar tela estilo monitor médico ────────────────────────
@@ -491,7 +735,7 @@ void desenharCabecalhoMAX() {
   tft.fillScreen(0x0000);
 
   // Fundo do cabeçalho
-  tft.fillRect(0, 0, 240, 38, 0x0841); // cinza escuro quase preto
+  tft.fillRect(0, 0, 240, 38, 0x0841);
 
   // "SYNAPSEA" centralizado
   tft.setTextColor(0x07FF); // ciano
@@ -518,105 +762,159 @@ void desenharCabecalhoMAX() {
   tft.setCursor(134, 50);
   tft.print("SpO2");
 
-  // Linha divisória vertical central
-  tft.fillRect(119, 42, 2, 110, 0x2104);
+  // Linha divisória vertical (BPM | SpO2 e PI | Qualidade) → y=42 a y=112
+  tft.fillRect(119, 42, 2, 70, 0x2104);
+
+  // Linha horizontal separando BPM/SpO2 de PI/Qualidade
+  tft.fillRect(0, 112, 240, 2, 0x2104);
+
+  // Rótulos PI e QUALIDADE
+  tft.setTextColor(0xFD20); // laranja
+  tft.setTextSize(1);
+  tft.setCursor(10, 116);
+  tft.print("PI");
+
+  tft.setTextColor(0x9FF3); // verde-azulado claro
+  tft.setCursor(143, 116);
+  tft.print("HRV");
+
+  // Linha horizontal separando PI/Qualidade de Status
+  tft.fillRect(0, 143, 240, 2, 0x2104);
 
   // Rótulo STATUS
   tft.setTextColor(0x8410);
-  tft.setTextSize(1);
-  tft.setCursor(8, 165);
+  tft.setCursor(8, 147);
   tft.print("STATUS");
 
-  // Rótulo ECG
-  tft.setTextColor(0x8410);
-  tft.setCursor(8, 213);
-  tft.print("ECG");
+  // Linha horizontal separando Status de ECG
+  tft.fillRect(0, 194, 240, 2, 0x2104);
 
-  // Borda ECG
-  tft.drawRect(0, 222, 240, 58, 0x2104);
+  // Rótulo PPG
+  tft.setTextColor(0x8410);
+  tft.setCursor(8, 198);
+  tft.print("PPG");
+
+  // Borda área ECG
+  tft.drawRect(0, 208, 240, 110, 0x2104);
 }
 
 void desenharValoresMAX(bool forcar) {
-  // ── Status / dedo ──────────────────────────────────────────────────────
-  bool mudouEstado = (dedoDetectado != prevDedo_d) || (maxOK != prevMaxOK_d) || forcar;
-
-  if (mudouEstado) {
-    tft.fillRect(0, 172, 240, 38, 0x0000);
-
-    if (!maxOK) {
-      // Fundo vermelho escuro
-      tft.fillRoundRect(6, 173, 228, 33, 5, 0x2000);
-      tft.setTextColor(0xF800);
-      tft.setTextSize(2);
-      tft.setCursor(52, 181);
-      tft.print("SEM SENSOR");
-    } else if (!dedoDetectado) {
-      // Fundo amarelo escuro
-      tft.fillRoundRect(6, 173, 228, 33, 5, 0x2200);
-      tft.setTextColor(0xFFE0);
-      tft.setTextSize(2);
-      tft.setCursor(42, 181);
-      tft.print("SEM LEITURA");
-    } else {
-      // Fundo verde escuro
-      tft.fillRoundRect(6, 173, 228, 33, 5, 0x0240);
-      tft.setTextColor(0x07E0);
-      tft.setTextSize(2);
-      tft.setCursor(76, 181);
-      tft.print("NORMAL");
-    }
-    prevDedo_d  = dedoDetectado;
-    prevMaxOK_d = maxOK;
-  }
+  bool mudouEstado = (qualSinal  != prevQual_d)  || (maxOK != prevMaxOK_d) || forcar;
+  bool mudouBPM    = (bpmReal    != prevBPM_d)   || forcar;
+  bool mudouSpo2   = (spo2Real   != prevSpo2_d)  || forcar;
+  bool mudouHRV    = (hrvRMSSD   != prevHRV_d)   || forcar;
+  bool mudouPI     = ((piVal - prevPI_d) > 0.09f || (prevPI_d - piVal) > 0.09f)
+                     || mudouHRV || mudouEstado || forcar;
 
   // ── BPM ────────────────────────────────────────────────────────────────
-  // Lê BPM das variáveis globais (placeholder por enquanto)
-  int bpmDisp = dedoDetectado ? (int)((irValue / 1000) % 60 + 60) : 0; // placeholder visual
-  // (será substituído por bpm_val real na próxima etapa)
-
-  if (bpmDisp != prevBPM_d || forcar) {
+  if (mudouBPM) {
     tft.fillRect(6, 58, 108, 56, 0x0000);
-    if (dedoDetectado) {
-      tft.setTextColor(0xF800);
-      tft.setTextSize(1);
-      tft.setCursor(14, 60);
-      // Ícone coração simplificado
-      tft.print("\3"); // char coração não suportado: usamos número direto
-      tft.setTextColor(0xF800);
+    if (dedoDetectado && bpmReal > 0) {
+      tft.setTextColor(0xF800); // vermelho
       tft.setTextSize(5);
-      // Centraliza número de 2-3 dígitos
-      int bx = (bpmDisp < 100) ? 22 : 8;
-      tft.setCursor(bx, 68);
-      tft.print(bpmDisp);
+      int bx = (bpmReal < 100) ? 22 : 8;
+      tft.setCursor(bx, 62);
+      tft.print(bpmReal);
     } else {
-      tft.setTextColor(0x4208);
+      tft.setTextColor(0x4208); // cinza escuro
       tft.setTextSize(4);
-      tft.setCursor(22, 72);
+      tft.setCursor(22, 68);
       tft.print("--");
     }
-    prevBPM_d = bpmDisp;
+    prevBPM_d = bpmReal;
   }
 
   // ── SpO2 ───────────────────────────────────────────────────────────────
-  int spo2Disp = dedoDetectado ? 98 : 0; // placeholder visual
-
-  if (spo2Disp != prevSpo2_d || forcar) {
+  if (mudouSpo2) {
     tft.fillRect(122, 58, 118, 56, 0x0000);
-    if (dedoDetectado) {
-      tft.setTextColor(0x07FF);
+    if (dedoDetectado && spo2Real > 0) {
+      tft.setTextColor(0x07FF); // ciano
       tft.setTextSize(4);
-      tft.setCursor(128, 68);
-      tft.print(spo2Disp);
+      tft.setCursor(128, 62);
+      tft.print(spo2Real);
       tft.setTextSize(2);
-      tft.setCursor(196, 78);
+      tft.setCursor(196, 72);
       tft.print("%");
     } else {
       tft.setTextColor(0x4208);
       tft.setTextSize(4);
-      tft.setCursor(140, 72);
+      tft.setCursor(140, 68);
       tft.print("--");
     }
-    prevSpo2_d = spo2Disp;
+    prevSpo2_d = spo2Real;
+  }
+
+  // ── PI e Qualidade do sinal ────────────────────────────────────────────
+  if (mudouPI) {
+    tft.fillRect(6, 124, 108, 20, 0x0000);   // limpa área PI
+    tft.fillRect(122, 124, 118, 20, 0x0000); // limpa área Qualidade
+    if (dedoDetectado) {
+      // Valor PI
+      tft.setTextColor(0xFD20); // laranja
+      tft.setTextSize(2);
+      char piBuf[8];
+      dtostrf(piVal, 4, 1, piBuf);
+      tft.setCursor(10, 126);
+      tft.print(piBuf);
+      tft.setTextSize(1);
+      tft.setCursor(66, 132);
+      tft.print("%");
+      // HRV valor + cor por faixa
+      tft.setTextSize(2);
+      if (hrvRMSSD >= 50) {
+        tft.setTextColor(0x07E0); // verde = relaxado
+      } else if (hrvRMSSD >= 20) {
+        tft.setTextColor(0xFFE0); // amarelo = normal
+      } else {
+        tft.setTextColor(0xF800); // vermelho = estresse
+      }
+      char hrvBuf[10];
+      snprintf(hrvBuf, sizeof(hrvBuf), "%d ms", hrvRMSSD);
+      tft.setCursor(124, 126);
+      tft.print(hrvBuf);
+    } else {
+      tft.setTextColor(0x4208);
+      tft.setTextSize(2);
+      tft.setCursor(22, 126);
+      tft.print("--");
+      tft.setCursor(140, 126);
+      tft.print("--");
+    }
+    prevPI_d  = piVal;
+    prevHRV_d = hrvRMSSD;
+  }
+
+  // ── Barra de Status ────────────────────────────────────────────────────
+  if (mudouEstado) {
+    tft.fillRect(0, 155, 240, 40, 0x0000);
+    if (!maxOK) {
+      tft.fillRoundRect(6, 156, 228, 35, 5, 0x2000); // vermelho escuro
+      tft.setTextColor(0xF800);
+      tft.setTextSize(2);
+      tft.setCursor(52, 165);
+      tft.print("SEM SENSOR");
+    } else if (qualSinal == 0) {
+      tft.fillRoundRect(6, 156, 228, 35, 5, 0x2200); // amarelo escuro
+      tft.setTextColor(0xFFE0);
+      tft.setTextSize(2);
+      tft.setCursor(42, 165);
+      tft.print("SEM LEITURA");
+    } else if (qualSinal == 1) {
+      tft.fillRoundRect(6, 156, 228, 35, 5, 0x4200); // laranja escuro
+      tft.setTextColor(0xFD20);
+      tft.setTextSize(2);
+      tft.setCursor(46, 165);
+      tft.print("SINAL FRACO");
+    } else {
+      tft.fillRoundRect(6, 156, 228, 35, 5, 0x0240); // verde escuro
+      tft.setTextColor(0x07E0);
+      tft.setTextSize(2);
+      tft.setCursor(76, 165);
+      tft.print("NORMAL");
+    }
+    prevQual_d  = qualSinal;
+    prevMaxOK_d = maxOK;
+    prevDedo_d  = dedoDetectado;
   }
 }
 
@@ -656,6 +954,9 @@ void desenharTelaMAX() {
     primeiraVez = false;
     prevBPM_d  = -999;
     prevSpo2_d = -999;
+    prevPI_d   = -1.0f;
+    prevQual_d = -1;
+    prevHRV_d  = -999;
   }
 
   desenharValoresMAX(false);
