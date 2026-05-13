@@ -138,6 +138,14 @@ float piBuffer[PI_BUF_SIZE] = {0.0f};
 int   piBufIdx   = 0;
 int   piBufCount = 0;
 
+// ─── Filtro EMA (Exponential Moving Average) — suavização final para exibição ──
+// Alpha: 0.0 = sem resposta (congela), 1.0 = sem suavização (bruto)
+// 0.30 = suave e responsivo (~6 amostras equiv.); aumente para 0.5 se quiser mais responsividade
+#define EMA_ALPHA 0.30f
+float emaBPM  = 0.0f;  bool emaBPMReady  = false;
+float emaSpo2 = 0.0f;  bool emaSpo2Ready = false;
+float emaPI   = 0.0f;  bool emaPIReady   = false;
+
 // ─── Filtros IIR + detecção de batimento (baseado em codigo_da_internet.ino) ──
 // Fs efetiva do MAX30102 com setup() padrão: 400sps / avg4 = 100 sps
 const float kSampFreq   = 100.0f;
@@ -549,6 +557,9 @@ void initFiltros() {
   mm_ir_n  = 0;  mm_ir_sum  = 0.0f;
   spo2BufCount = 0;  spo2BufIdx = 0;
   piBufCount   = 0;  piBufIdx   = 0;
+  emaBPMReady  = false;  emaBPM  = 0.0f;
+  emaSpo2Ready = false;  emaSpo2 = 0.0f;
+  emaPIReady   = false;  emaPI   = 0.0f;
 }
 
 // ─── MAX30102: leitura com BPM, SpO2, PI e HRV (filtros IIR) ──────────────
@@ -573,7 +584,7 @@ void lerMAX30102() {
 
     // ── Reset completo após 3 s sem dedo ──────────────────────────────────
     if (!dedoDetectado && (agora - ultimaVezComDedo > 3000)) {
-      initFiltros();
+      initFiltros(); // já reseta EMA dentro de initFiltros()
       bpmReal = 0;  bpmBufCount = 0;  bpmBufIdx = 0;
       spo2Real = 0; piVal = 0.0f;
       spo2BufCount = 0;  spo2BufIdx = 0;
@@ -648,7 +659,10 @@ void lerMAX30102() {
             if (bpmBufCount >= 4) {
               float soma = 0.0f;
               for (int i = 0; i < bpmBufCount; i++) soma += bpmBuffer[i];
-              bpmReal = (int)(soma / bpmBufCount + 0.5f);
+              float mediaCalc = soma / bpmBufCount;
+              if (!emaBPMReady) { emaBPM = mediaCalc; emaBPMReady = true; }
+              else emaBPM = EMA_ALPHA * mediaCalc + (1.0f - EMA_ALPHA) * emaBPM;
+              bpmReal = (int)(emaBPM + 0.5f);
             }
           }
         }
@@ -682,7 +696,10 @@ void lerMAX30102() {
             if (piBufCount < PI_BUF_SIZE) piBufCount++;
             float somaPI = 0.0f;
             for (int i = 0; i < piBufCount; i++) somaPI += piBuffer[i];
-            piVal = somaPI / piBufCount;
+            float rawPI = somaPI / piBufCount;
+            if (!emaPIReady) { emaPI = rawPI; emaPIReady = true; }
+            else emaPI = EMA_ALPHA * rawPI + (1.0f - EMA_ALPHA) * emaPI;
+            piVal = emaPI;
           }
           if (irAC > 0.0f && irDC > 0.0f && redDC > 0.0f && redAC > 0.0f) {
             float R     = (redAC / redDC) / (irAC / irDC);
@@ -694,7 +711,10 @@ void lerMAX30102() {
             if (spo2BufCount < SPO2_BUF_SIZE) spo2BufCount++;
             int somaS = 0;
             for (int i = 0; i < spo2BufCount; i++) somaS += spo2Buffer[i];
-            spo2Real = somaS / spo2BufCount;
+            float rawSpo2 = (float)(somaS / spo2BufCount);
+            if (!emaSpo2Ready) { emaSpo2 = rawSpo2; emaSpo2Ready = true; }
+            else emaSpo2 = EMA_ALPHA * rawSpo2 + (1.0f - EMA_ALPHA) * emaSpo2;
+            spo2Real = (int)(emaSpo2 + 0.5f);
           }
         }
         // Reset MinMax para o próximo ciclo de batida
