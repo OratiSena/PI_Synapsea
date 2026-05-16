@@ -112,16 +112,9 @@ extern int   rrBufIdx;
 extern int   rrBufCount;
 extern int   hrvRMSSD;
 
-// ECG scroll
-extern int  ecgBuf[ECG_W];
-extern int  ecgPos;
-extern long prevIR;
-
 // ─── Controle de tela e botão ─────────────────────────────────────────────
 extern int  telaAtual;
 extern bool btnAnterior;
 extern unsigned long ultimoDebounce;
 extern const unsigned long debounceDelay;
-extern unsigned long ultimaAtualizacaoMAX;
-extern const unsigned long intervaloAtualizacaoMAX;
-extern unsigned long ultimoDebugMAX;
+extern bool telaPrecisaRedesenhar;

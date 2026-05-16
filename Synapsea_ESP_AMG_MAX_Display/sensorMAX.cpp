@@ -217,6 +217,7 @@ void lerMAX30102() {
   else                                   qualSinal = 2;
 
   // ── Debug a cada 5 s ─────────────────────────────────────────────────
+  static unsigned long ultimoDebugMAX = 0;
   unsigned long agoraNow = millis();
   if (agoraNow - ultimoDebugMAX >= 5000) {
     ultimoDebugMAX = agoraNow;

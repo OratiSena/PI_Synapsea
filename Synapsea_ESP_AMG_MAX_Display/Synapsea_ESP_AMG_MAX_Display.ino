@@ -117,19 +117,12 @@ int   rrBufIdx            = 0;
 int   rrBufCount          = 0;
 int   hrvRMSSD            = 0;
 
-// ─── ECG scroll ───────────────────────────────────────────────────────────
-int  ecgBuf[ECG_W]   = {0};
-int  ecgPos          = 0;
-long prevIR          = 0;
-
 // ─── Controle de tela e botão ─────────────────────────────────────────────
-int  telaAtual                              = 0;
-bool btnAnterior                            = HIGH;
-unsigned long ultimoDebounce                = 0;
-const unsigned long debounceDelay           = 300;
-unsigned long ultimaAtualizacaoMAX          = 0;
-const unsigned long intervaloAtualizacaoMAX = 500;
-unsigned long ultimoDebugMAX                = 0;
+int  telaAtual                    = 0;
+bool btnAnterior                  = HIGH;
+unsigned long ultimoDebounce      = 0;
+const unsigned long debounceDelay = 300;
+bool telaPrecisaRedesenhar        = true;
 
 // ─────────────────────────────────────────────────────────────────────────
 void setup() {
@@ -144,7 +137,6 @@ void setup() {
   tft.setTextSize(2);
 
   iniciarAMG8833();
-  colorbar();
 
   pinMode(BTN_PIN, INPUT_PULLUP);
 
@@ -155,34 +147,58 @@ void setup() {
 
 void loop() {
   verificarBotaoTrocaTela();
+  lerMAX30102();
 
-  if (telaAtual == 0) {
-    // ── Tela térmica AMG8833 ───────────────────────────────────────────────
+  // ── Redesenho completo ao trocar tela ────────────────────────────────────
+  if (telaPrecisaRedesenhar) {
+    tft.fillScreen(0x0000);
+    prevBPM_d  = -999; prevSpo2_d = -999; prevPI_d = -1.0f;
+    prevQual_d = -1;   prevHRV_d  = -999;
+    prevDedo_d = false; prevMaxOK_d = false;
+    switch (telaAtual) {
+      case 0: desenharTelaHome();        break;
+      case 1: desenharTelaTemperatura(); break;
+      case 2: desenharTelaHeart();       break;
+      case 3: desenharTelaPulse();       break;
+      case 4: desenharTelaAnalysis();    break;
+      case 5: desenharTelaSummary();     break;
+    }
+    telaPrecisaRedesenhar = false;
+  }
+
+  // ── Leitura e renderização do AMG8833 (somente na tela de temperatura) ──
+  if (telaAtual == 1) {
     lerAMG8833();
-
     uint16_t boxSize = min(tft.width() / INTERPOLATED_COLS, 240 / INTERPOLATED_ROWS);
     drawpixels(dest_2d, INTERPOLATED_ROWS, INTERPOLATED_COLS, boxSize, boxSize, false);
-
-    tft.fillRect(0, 250, 240, 30, 0x0000);
-    tft.setTextColor(0xFFFF);
-    tft.setCursor(0, 250);
-    tft.setTextSize(3);
-    tft.print("MAX:");
-    tft.print(pix_max);
-    tft.print(" C");
-
-    tft.drawCircle(pos_x, pos_y, 6, 0);
-    tft.drawLine(pos_x - 3, pos_y, pos_x + 3, pos_y, 0);
-    tft.drawLine(pos_x, pos_y - 3, pos_x, pos_y + 3, 0);
+    // Atualiza MAX/MIN na caixa lateral
+    static float prevMaxTemp = 0;
+    static float pixMinAtual = 100.0f;
+    if (pix_max < pixMinAtual) pixMinAtual = pix_max; // acumula mínimo
+    if (fabsf(pix_max - prevMaxTemp) > 0.2f) {
+      tft.fillRect(175, 52, 58, 14, 0x0841);
+      tft.setTextColor(0xFFFF); tft.setTextSize(1);
+      tft.setCursor(175, 52); tft.print(pix_max, 1); tft.print("C");
+      tft.fillRect(175, 72, 58, 14, 0x0841);
+      tft.setCursor(175, 72); tft.print(pixMinAtual, 1); tft.print("C");
+      prevMaxTemp = pix_max;
+    }
     pix_max = 0;
+    pixMinAtual = 100.0f;
     delay(50);
+    return;
+  }
 
-  } else {
-    // ── Tela do MAX30102 ──────────────────────────────────────────────────
-    lerMAX30102();
-    if (millis() - ultimaAtualizacaoMAX >= intervaloAtualizacaoMAX) {
-      desenharTelaMAX();
-      ultimaAtualizacaoMAX = millis();
+  // ── Atualização incremental das outras telas (~400 ms) ──────────────────
+  static unsigned long ultimaAtualDisplay = 0;
+  if (millis() - ultimaAtualDisplay >= 400) {
+    ultimaAtualDisplay = millis();
+    switch (telaAtual) {
+      case 0: atualizarTelaHome();     break;
+      case 2: atualizarTelaHeart();    break;
+      case 3: atualizarTelaPulse();    break;
+      case 4: atualizarTelaAnalysis(); break;
+      case 5: atualizarTelaSummary();  break;
     }
   }
 }
