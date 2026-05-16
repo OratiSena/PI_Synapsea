@@ -102,17 +102,17 @@ void desenharStatus(int x, int y, int w, int h, const char* texto, uint16_t corF
 // ══════════════════════════════════════════════════════════════════════════
 
 void colorbar() {
-  // barra de cores na tela de temperatura (y=270)
-  tft.fillRect(0, 270, 240, 24, COR_FUNDO);
+  // barra de cores abaixo da imagem térmica (y=277, imagem termina em y=276)
+  tft.fillRect(0, 277, 240, 26, COR_FUNDO);
   for (int i = 0; i < 240; i++) {
     int colorIndex = constrain((int)(i * 1.05), 0, maxIndex);
-    tft.fillRect(i, 270, 1, 24, camColors[colorIndex]);
+    tft.fillRect(i, 277, 1, 26, camColors[colorIndex]);
   }
   tft.setTextColor(COR_BRANCO);
   tft.setTextSize(1);
-  tft.setCursor(2, 275);
+  tft.setCursor(2, 281);
   tft.print(MINTEMP); tft.print("C");
-  tft.setCursor(210, 275);
+  tft.setCursor(210, 281);
   tft.print(MAXTEMP); tft.print("C");
 }
 
@@ -148,10 +148,6 @@ void desenharTelaHome() {
 
   // Cabeçalho
   tft.fillRect(0, 0, 240, 42, COR_CARD);
-  tft.setTextColor(COR_CIANO);
-  tft.setTextSize(1);
-  tft.setCursor(8, 8);
-  tft.print("BT");
   tft.setTextColor(COR_BRANCO);
   tft.setTextSize(2);
   tft.setCursor(56, 10);
@@ -187,13 +183,19 @@ void desenharTelaHome() {
   tft.fillRect(19, 190, 6, 28, COR_VERMELHO);
   tft.setTextColor(COR_CIANO);
   tft.setTextSize(1);
-  tft.setCursor(34, 184);
+  tft.setCursor(34, 181);
   tft.print("TEMP");
-  bool tempOK = (pix_max > 25.0f && pix_max < 42.0f);
-  tft.setTextColor(tempOK ? COR_VERDE : COR_VERMELHO);
-  tft.setTextSize(2);
-  tft.setCursor(34, 204);
-  tft.print(tempOK ? "OK" : "!!");
+  {
+    bool tOK = (pix_max > 25.0f && pix_max < 42.0f);
+    uint16_t cT = (pix_max < 0.5f) ? COR_CINZA : (tOK ? COR_VERDE : COR_VERMELHO);
+    tft.setTextColor(cT); tft.setTextSize(2); tft.setCursor(34, 195);
+    if (pix_max > 0.5f) {
+      char tBuf[6]; dtostrf(pix_max, 4, 1, tBuf); tft.print(tBuf);
+      tft.setTextSize(1); tft.setCursor(82, 201); tft.print("C");
+    } else {
+      tft.print("--");
+    }
+  }
 
   // Card VITAIS
   desenharCard(126, 176, 108, 62, COR_CIANO);
@@ -228,18 +230,22 @@ void atualizarTelaHome() {
     tft.setCursor(10, 70);
     tft.print(horaBuf);
   }
-  // Status cards
-  static bool prevTempOK = false, prevVitOK = false;
-  bool tempOK   = (pix_max > 25.0f && pix_max < 42.0f);
-  bool vitaisOK = (maxOK && dedoDetectado && bpmReal > 40 && spo2Real > 85);
-  if (tempOK != prevTempOK) {
-    tft.fillRect(34, 200, 72, 20, COR_CARD);
-    tft.setTextColor(tempOK ? COR_VERDE : COR_VERMELHO);
-    tft.setTextSize(2);
-    tft.setCursor(34, 204);
-    tft.print(tempOK ? "OK" : "!!");
-    prevTempOK = tempOK;
+  // Card TEMP — atualiza valor de temperatura
+  static float prevTempVal = -1.0f;
+  if (fabsf(pix_max - prevTempVal) > 0.3f) {
+    tft.fillRect(34, 192, 74, 22, COR_CARD);
+    bool tOK = (pix_max > 25.0f && pix_max < 42.0f);
+    uint16_t cT = (pix_max < 0.5f) ? COR_CINZA : (tOK ? COR_VERDE : COR_VERMELHO);
+    tft.setTextColor(cT); tft.setTextSize(2); tft.setCursor(34, 195);
+    if (pix_max > 0.5f) {
+      char tBuf[6]; dtostrf(pix_max, 4, 1, tBuf); tft.print(tBuf);
+      tft.setTextSize(1); tft.setCursor(82, 201); tft.print("C");
+    } else tft.print("--");
+    prevTempVal = pix_max;
   }
+  // Card VITAIS
+  static bool prevVitOK = false;
+  bool vitaisOK = (maxOK && dedoDetectado && bpmReal > 40 && spo2Real > 85);
   if (vitaisOK != prevVitOK) {
     tft.fillRect(156, 200, 72, 20, COR_CARD);
     tft.setTextColor(vitaisOK ? COR_VERDE : (maxOK ? COR_AMARELO : COR_VERMELHO));
@@ -256,35 +262,20 @@ void atualizarTelaHome() {
 
 void desenharTelaTemperatura() {
   tft.fillScreen(COR_FUNDO);
+  desenharCabecalho("Temperature", COR_CIANO);
+  // Ícone termômetro no cabeçalho (direita)
+  tft.fillCircle(228, 24, 6, COR_VERMELHO);
+  tft.fillRect(225, 8, 6, 18, COR_VERMELHO);
 
-  // Cabeçalho
-  tft.fillRect(0, 0, 240, 34, COR_CARD);
-  tft.setTextColor(COR_CIANO);
-  tft.setTextSize(1);
-  tft.setCursor(6, 6);
-  tft.print("Synapsea  Temperatura");
-  // Termômetro
-  tft.fillCircle(228, 22, 7, COR_VERMELHO);
-  tft.fillRect(225, 8, 6, 15, COR_VERMELHO);
-  tft.fillRect(0, 34, 240, 2, COR_CIANO);
-
-  // Área MAX/MIN (será atualizada pelo loop)
-  tft.drawRect(155, 38, 82, 56, COR_CINZA_ESC);
+  // Label rodapé
   tft.setTextColor(COR_CINZA);
   tft.setTextSize(1);
-  tft.setCursor(162, 42);
-  tft.print("MAX");
-  tft.setCursor(162, 62);
-  tft.print("MIN");
-
-  // Labels rodapé
-  tft.setTextColor(COR_CINZA);
-  tft.setTextSize(1);
-  tft.setCursor(4, 294);
+  tft.setCursor(4, 306);
   tft.print("AMG8833  8x8");
 
   colorbar();
   desenharIndicadorPagina(1, 6);
+  // Overlay MAX/MIN é redesenhado pelo loop a cada frame
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -296,18 +287,19 @@ void desenharTelaHeart() {
   desenharCabecalho("Heart", COR_VERMELHO);
   desenharIconeBateria(215, 6);
 
-  // Coração decorativo
-  int hx = 62, hy = 112;
-  tft.fillCircle(hx - 14, hy - 8, 18, COR_VERMELHO);
-  tft.fillCircle(hx + 14, hy - 8, 18, COR_VERMELHO);
-  tft.fillTriangle(hx - 33, hy + 5, hx + 33, hy + 5, hx, hy + 38, COR_VERMELHO);
+  // Coração decorativo (forma melhorada)
+  int hx = 62, hy = 110;
+  tft.fillCircle(hx - 12, hy - 4, 15, COR_VERMELHO);
+  tft.fillCircle(hx + 12, hy - 4, 15, COR_VERMELHO);
+  tft.fillTriangle(hx - 28, hy + 8, hx + 28, hy + 8, hx, hy + 38, COR_VERMELHO);
+  tft.fillRect(hx - 28, hy + 1, 56, 9, COR_VERMELHO);
   // Linha ECG
-  int lx = hx - 28, ly = hy + 4;
+  int lx = hx - 26, ly = hy + 5;
   tft.drawLine(lx,      ly,      lx + 10, ly,      COR_BRANCO);
-  tft.drawLine(lx + 10, ly,      lx + 14, ly - 14, COR_BRANCO);
-  tft.drawLine(lx + 14, ly - 14, lx + 18, ly + 12, COR_BRANCO);
-  tft.drawLine(lx + 18, ly + 12, lx + 22, ly,      COR_BRANCO);
-  tft.drawLine(lx + 22, ly,      lx + 34, ly,      COR_BRANCO);
+  tft.drawLine(lx + 10, ly,      lx + 13, ly - 16, COR_BRANCO);
+  tft.drawLine(lx + 13, ly - 16, lx + 16, ly + 14, COR_BRANCO);
+  tft.drawLine(lx + 16, ly + 14, lx + 19, ly,      COR_BRANCO);
+  tft.drawLine(lx + 19, ly,      lx + 30, ly,      COR_BRANCO);
 
   // BPM
   tft.setTextColor(COR_BRANCO);
@@ -328,8 +320,8 @@ void desenharTelaHeart() {
   tft.setTextSize(1);
   tft.setCursor(14, 175);
   tft.print("SpO2");
-  tft.fillCircle(94, 184, 7, COR_CIANO);
-  tft.fillTriangle(88, 184, 100, 184, 94, 172, COR_CIANO);
+  tft.fillCircle(95, 186, 8, COR_CIANO);
+  tft.fillTriangle(87, 183, 103, 183, 95, 169, COR_CIANO);
   tft.setTextColor(COR_BRANCO);
   tft.setTextSize(3);
   tft.setCursor(14, 192);
@@ -420,11 +412,6 @@ void desenharTelaPulse() {
   tft.fillScreen(COR_FUNDO);
   desenharCabecalho("Pulse", COR_CIANO);
   desenharIconeBateria(215, 6);
-
-  // Ícone coração pequeno no cabeçalho
-  tft.fillCircle(20, 14, 5, COR_VERMELHO);
-  tft.fillCircle(26, 14, 5, COR_VERMELHO);
-  tft.fillTriangle(15, 17, 31, 17, 23, 24, COR_VERMELHO);
 
   // BPM no canto da área PPG
   tft.setTextColor(COR_BRANCO);
@@ -583,12 +570,6 @@ void desenharTelaAnalysis() {
   tft.fillScreen(COR_FUNDO);
   desenharCabecalho("Analysis", COR_CIANO);
   desenharIconeBateria(215, 6);
-  tft.setTextColor(COR_CINZA);
-  tft.setTextSize(1);
-  char horaBuf[6];
-  snprintf(horaBuf, sizeof(horaBuf), "%02d:%02d", horaSimulada, minutoSimulado);
-  tft.setCursor(160, 6);
-  tft.print(horaBuf);
 
   tft.setTextColor(COR_BRANCO);
   tft.setTextSize(2);
@@ -643,37 +624,46 @@ void desenharTelaAnalysis() {
 }
 
 void atualizarTelaAnalysis() {
-  if (hrvRMSSD != prevHRV_d || (bool)dedoDetectado != (bool)prevDedo_d) {
-    prevHRV_d  = hrvRMSSD;
-    prevDedo_d = dedoDetectado;
-    tft.fillRect(0, 36, 240, 238, COR_FUNDO);
-    tft.setTextColor(COR_BRANCO); tft.setTextSize(2); tft.setCursor(52, 40); tft.print("Estresse est.");
-
-    const char* textoEstresse; uint16_t corEstresse; int angGauge;
-    if (!dedoDetectado || hrvRMSSD == 0) { textoEstresse = "--";    corEstresse = COR_CINZA;    angGauge = 270; }
-    else if (hrvRMSSD >= 50)             { textoEstresse = "Baixo"; corEstresse = COR_VERDE;    angGauge = 205; }
-    else if (hrvRMSSD >= 20)             { textoEstresse = "Medio"; corEstresse = COR_AMARELO;  angGauge = 270; }
-    else                                 { textoEstresse = "Alto";  corEstresse = COR_VERMELHO; angGauge = 335; }
-
-    _desenharGauge(120, 175, 78, angGauge, corEstresse);
-    tft.setTextColor(corEstresse); tft.setTextSize(3);
-    int len = strlen(textoEstresse);
-    tft.setCursor(120 - len * 9, 165); tft.print(textoEstresse);
-
-    if (dedoDetectado && hrvRMSSD > 0) {
-      int ex = 120, ey = 200;
-      tft.drawCircle(ex, ey, 14, corEstresse);
-      tft.fillCircle(ex - 5, ey - 4, 2, corEstresse);
-      tft.fillCircle(ex + 5, ey - 4, 2, corEstresse);
-      if (corEstresse == COR_VERDE)     { tft.drawLine(ex-6,ey+4,ex,ey+8,corEstresse); tft.drawLine(ex,ey+8,ex+6,ey+4,corEstresse); }
-      else if (corEstresse == COR_VERMELHO) { tft.drawLine(ex-6,ey+8,ex,ey+4,corEstresse); tft.drawLine(ex,ey+4,ex+6,ey+8,corEstresse); }
-      else tft.drawLine(ex-6,ey+6,ex+6,ey+6,corEstresse);
-    }
-    tft.setTextColor(COR_CIANO); tft.setTextSize(1); tft.setCursor(20, 228); tft.print("Baseado em HRV");
-    const char* estadoTxt = !dedoDetectado ? "Sem leitura" : (hrvRMSSD >= 20 ? "Estado estavel" : "Atencao");
-    tft.setTextColor(COR_CINZA); tft.setCursor(20, 244); tft.print(estadoTxt);
-    tft.setCursor(6, 260); tft.print("* Estimativa. Nao e diagnostico.");
+  // Atualiza apenas quando a categoria de estresse muda (reduz pisca)
+  int cat = 0;  // 0=sem leitura, 1=Baixo, 2=Medio, 3=Alto
+  if (dedoDetectado && hrvRMSSD > 0) {
+    if (hrvRMSSD >= 50)      cat = 1;
+    else if (hrvRMSSD >= 20) cat = 2;
+    else                     cat = 3;
   }
+  static int prevCat = -1;
+  if (cat == prevCat) return;
+  prevCat    = cat;
+  prevHRV_d  = hrvRMSSD;
+  prevDedo_d = dedoDetectado;
+
+  tft.fillRect(0, 36, 240, 238, COR_FUNDO);
+  tft.setTextColor(COR_BRANCO); tft.setTextSize(2); tft.setCursor(52, 40); tft.print("Estresse est.");
+
+  const char* textoEstresse; uint16_t corEstresse; int angGauge;
+  if (cat == 0)      { textoEstresse = "--";    corEstresse = COR_CINZA;    angGauge = 270; }
+  else if (cat == 1) { textoEstresse = "Baixo"; corEstresse = COR_VERDE;    angGauge = 205; }
+  else if (cat == 2) { textoEstresse = "Medio"; corEstresse = COR_AMARELO;  angGauge = 270; }
+  else               { textoEstresse = "Alto";  corEstresse = COR_VERMELHO; angGauge = 335; }
+
+  _desenharGauge(120, 175, 78, angGauge, corEstresse);
+  tft.setTextColor(corEstresse); tft.setTextSize(3);
+  int len = strlen(textoEstresse);
+  tft.setCursor(120 - len * 9, 165); tft.print(textoEstresse);
+
+  if (cat > 0) {
+    int ex = 120, ey = 200;
+    tft.drawCircle(ex, ey, 14, corEstresse);
+    tft.fillCircle(ex - 5, ey - 4, 2, corEstresse);
+    tft.fillCircle(ex + 5, ey - 4, 2, corEstresse);
+    if (cat == 1) { tft.drawLine(ex-6,ey+4,ex,ey+8,corEstresse); tft.drawLine(ex,ey+8,ex+6,ey+4,corEstresse); }
+    else if (cat == 3) { tft.drawLine(ex-6,ey+8,ex,ey+4,corEstresse); tft.drawLine(ex,ey+4,ex+6,ey+8,corEstresse); }
+    else tft.drawLine(ex-6,ey+6,ex+6,ey+6,corEstresse);
+  }
+  tft.setTextColor(COR_CIANO); tft.setTextSize(1); tft.setCursor(20, 228); tft.print("Baseado em HRV");
+  const char* estadoTxt = (cat == 0) ? "Sem leitura" : (cat <= 2 ? "Estado estavel" : "Atencao");
+  tft.setTextColor(COR_CINZA); tft.setCursor(20, 244); tft.print(estadoTxt);
+  tft.setCursor(6, 260); tft.print("* Estimativa. Nao e diagnostico.");
 }
 
 // ══════════════════════════════════════════════════════════════════════════

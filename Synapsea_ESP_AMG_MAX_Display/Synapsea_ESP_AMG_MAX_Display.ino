@@ -168,23 +168,39 @@ void loop() {
 
   // ── Leitura e renderização do AMG8833 (somente na tela de temperatura) ──
   if (telaAtual == 1) {
+    pix_max = 0;     // reset antes da leitura para drawpixels achar o novo max
     lerAMG8833();
+
+    // Temperatura mínima do frame
+    float frameMin = 100.0f;
+    for (int i = 0; i < INTERPOLATED_ROWS * INTERPOLATED_COLS; i++) {
+      if (dest_2d[i] > 0.0f && dest_2d[i] < frameMin) frameMin = dest_2d[i];
+    }
+
     uint16_t boxSize = min(tft.width() / INTERPOLATED_COLS, 240 / INTERPOLATED_ROWS);
     drawpixels(dest_2d, INTERPOLATED_ROWS, INTERPOLATED_COLS, boxSize, boxSize, false);
-    // Atualiza MAX/MIN na caixa lateral
-    static float prevMaxTemp = 0;
-    static float pixMinAtual = 100.0f;
-    if (pix_max < pixMinAtual) pixMinAtual = pix_max; // acumula mínimo
-    if (fabsf(pix_max - prevMaxTemp) > 0.2f) {
-      tft.fillRect(175, 52, 58, 14, 0x0841);
-      tft.setTextColor(0xFFFF); tft.setTextSize(1);
-      tft.setCursor(175, 52); tft.print(pix_max, 1); tft.print("C");
-      tft.fillRect(175, 72, 58, 14, 0x0841);
-      tft.setCursor(175, 72); tft.print(pixMinAtual, 1); tft.print("C");
-      prevMaxTemp = pix_max;
-    }
-    pix_max = 0;
-    pixMinAtual = 100.0f;
+
+    // Mira (crosshair) no ponto mais quente
+    int cx = (int)pos_x + boxSize / 2;
+    int cy = (int)pos_y + boxSize / 2;
+    tft.drawCircle(cx, cy, 5, 0xFFFF);
+    tft.drawLine(cx - 7, cy, cx - 5, cy, 0xFFFF);
+    tft.drawLine(cx + 5, cy, cx + 7, cy, 0xFFFF);
+    tft.drawLine(cx, cy - 7, cx, cy - 5, 0xFFFF);
+    tft.drawLine(cx, cy + 5, cx, cy + 7, 0xFFFF);
+
+    // Overlay MAX/MIN redesenhado sobre a imagem a cada frame
+    tft.fillRect(152, 36, 88, 60, 0x0841);
+    tft.drawRect(152, 36, 88, 60, 0x2104);
+    tft.setTextColor(0x4208); tft.setTextSize(1);
+    tft.setCursor(158, 40); tft.print("MAX:");
+    tft.setCursor(158, 64); tft.print("MIN:");
+    tft.setTextColor(0xF800);
+    tft.setCursor(158, 51); tft.print(pix_max, 1); tft.print("C");
+    tft.setTextColor(0x07FF);
+    tft.setCursor(158, 75); tft.print(frameMin, 1); tft.print("C");
+
+    // pix_max NÃO é resetado aqui: persiste para Home e Summary
     delay(50);
     return;
   }
