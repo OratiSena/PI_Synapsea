@@ -1,0 +1,27 @@
+# Pinagens do projeto Synapsea
+
+
+## Pinagem para Sensores:
+- **AMG8833 SDA**: GPIO 21
+- **AMG8833 SCL**: GPIO 22
+- **MAX30102 SDA**: GPIO 25
+- **MAX30102 SCL**: GPIO 26
+
+## Pinagem para Display ILI9341:
+- **MOSI**: GPIO 23
+- **MISO**: GPIO 19
+- **SCK**: GPIO 18
+- **CS**: GPIO 5
+- **DC**: GPIO 2
+- **RST**: GPIO 4
+- **BL**: GPIO 15
+
+## Pinagem para Botão:
+- **Botão físico**: GPIO 27
+
+## Pinagem para Touchscreen do Display com ESP32:
+- **T_CLK**: GPIO 34 (Clock do touchscreen)
+- **T_CS**: GPIO 35 (Chip Select do touchscreen)
+- **T_DIN**: GPIO 32 (Data In do touchscreen)
+- **T_DO**: GPIO 33 (Data Out do touchscreen)
+- **T_IRQ**: GPIO 13 (Interrupção do touchscreen)

@@ -49,6 +49,11 @@ void initFiltros() {
   emaBPMReady  = false;  emaBPM  = 0.0f;
   emaSpo2Ready = false;  emaSpo2 = 0.0f;
   emaPIReady   = false;  emaPI   = 0.0f;
+  // Reset filtro de respiração
+  br_lp1 = 0.0f;  br_prev_sig = 0.0f;
+  br_last_t = 0;  br_idx = 0;  br_cnt = 0;
+  br_beat_cnt = 0;
+  br_amp_ema_ready = false;
 }
 
 void lerMAX30102() {
@@ -79,6 +84,7 @@ void lerMAX30102() {
       piBufCount   = 0;  piBufIdx   = 0;
       hrvRMSSD = 0; rrBufCount = 0;   rrBufIdx  = 0;
       ultimoBeat = 0;
+      respRPM = 0;
       continue;
     }
 
@@ -89,6 +95,7 @@ void lerMAX30102() {
       lpf_red = (float)red;  lpf_ir  = (float)ir;
       hpf_raw = lpf_red;     hpf_out = 0.0f;
       dif_prev = 0.0f;
+      // Respiração usa amplitude por batida — sem reset necessário aqui
       filtrosInit = true;
       continue;
     }
@@ -200,6 +207,49 @@ void lerMAX30102() {
             spo2Real = (int)(emaSpo2 + 0.5f);
           }
         }
+        // ── Respiração via nível DC do IR por batida ───────────────────────
+        // irDC_beat = nível médio do IR na janela da batida.
+        // A respiração modula este DC (~1-3%) por variação do volume periférico.
+        // LP muito lento (coef 0.97, ~33 batidas) = rastreia só deriva lenta.
+        // HP = irDC - LP: osc. da respiração passa nitidamente.
+        // br_last_t SEMPRE avança no cruzamento (evita congelamento).
+        if (mm_ir_n > 5) {
+          float irDC_beat = mm_ir_sum / (float)mm_ir_n;
+          if (!br_amp_ema_ready) {
+            br_lp1 = irDC_beat;
+            br_amp_ema_ready = true;
+            br_prev_sig = 0.0f;
+            br_beat_cnt = 0;
+          } else {
+            br_beat_cnt++;
+            // Fase 1 (20 batimentos): convergência rápida para centrar o filtro
+            // Fase 2 (após 20): rastreamento lento (só deriva muito lenta)
+            float a_lp = (br_beat_cnt < 20) ? 0.3f : 0.03f;
+            br_lp1 = (1.0f - a_lp) * br_lp1 + a_lp * irDC_beat;
+            float br_sig = irDC_beat - br_lp1;
+            // Só detecta cruzamento depois da convergência (~20 batimentos ≈ 20 s)
+            if (br_beat_cnt >= 20) {
+              if (br_sig >= 0.0f && br_prev_sig < 0.0f) {  // cruzamento ascendente
+                unsigned long nowR = millis();
+                if (br_last_t == 0) {
+                  br_last_t = nowR;
+                } else {
+                  long interv = (long)(nowR - br_last_t);
+                  if (interv > 1500 && interv < 10000) {    // válido: 6–40 rpm
+                    br_ints[br_idx % 6] = interv;
+                    br_idx++;
+                    if (br_cnt < 6) br_cnt++;
+                    long sum = 0;
+                    for (int i = 0; i < br_cnt; i++) sum += br_ints[i];
+                    respRPM = (int)(60000.0f / ((float)sum / br_cnt));
+                  }
+                  br_last_t = nowR;
+                }
+              }
+            }
+            br_prev_sig = br_sig;
+          }
+        }
         // Reset MinMax para o próximo ciclo de batida
         mm_red_n = 0;  mm_red_sum = 0.0f;
         mm_ir_n  = 0;  mm_ir_sum  = 0.0f;
@@ -209,9 +259,9 @@ void lerMAX30102() {
     }
 
     zc_lastDiff = curDiff;
-  }
 
-  // ── Qualidade do sinal ────────────────────────────────────────────────
+    // Respiração calculada por batida (bloco PAM acima) — nada aqui
+  }  // fim while available()
   if (!dedoDetectado)                    qualSinal = 0;
   else if (piVal < 0.3f || bpmReal == 0) qualSinal = 1;
   else                                   qualSinal = 2;
@@ -228,6 +278,16 @@ void lerMAX30102() {
     Serial.print(" SpO2="); Serial.print(spo2Real);
     Serial.print(" PI=");   Serial.print(piVal, 1);
     Serial.print(" HRV=");
-    if (hrvRMSSD > 0) Serial.println(hrvRMSSD); else Serial.println("--");
+    if (hrvRMSSD > 0) Serial.print(hrvRMSSD); else Serial.print("--");
+    Serial.print(" RESP=");
+    if (respRPM > 0) Serial.print(respRPM); else Serial.print("--");
+    Serial.print(" br_cnt="); Serial.print(br_cnt);
+    Serial.print(" br_beat="); Serial.print(br_beat_cnt);
+    if (mm_ir_n > 0) {
+      long irDC_now = (long)(mm_ir_sum / mm_ir_n);
+      Serial.print(" irDC="); Serial.print(irDC_now);
+      Serial.print(" brLP="); Serial.print((long)br_lp1);
+      Serial.print(" brHP="); Serial.println(irDC_now - (long)br_lp1);
+    } else Serial.println();
   }
 }

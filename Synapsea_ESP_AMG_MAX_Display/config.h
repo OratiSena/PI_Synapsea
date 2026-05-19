@@ -107,10 +107,22 @@ extern float mm_ir_min,  mm_ir_max,  mm_ir_sum;  extern int mm_ir_n;
 
 // Qualidade e HRV
 extern int   qualSinal;
+extern int   respRPM;
 extern long  rrBuf[RR_BUF_SIZE];
 extern int   rrBufIdx;
 extern int   rrBufCount;
 extern int   hrvRMSSD;
+
+// Filtro de respiração (vars globais para reset correto)
+extern float         br_lp1;
+extern float         br_lp2;
+extern float         br_prev_sig;
+extern bool          br_amp_ema_ready;
+extern unsigned long br_last_t;
+extern long          br_ints[6];
+extern int           br_idx;
+extern int           br_cnt;
+extern int           br_beat_cnt;
 
 // ─── Controle de tela e botão ─────────────────────────────────────────────
 extern int  telaAtual;

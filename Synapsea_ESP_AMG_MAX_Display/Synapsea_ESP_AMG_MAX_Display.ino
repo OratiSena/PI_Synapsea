@@ -116,6 +116,18 @@ long  rrBuf[RR_BUF_SIZE] = {0};
 int   rrBufIdx            = 0;
 int   rrBufCount          = 0;
 int   hrvRMSSD            = 0;
+int   respRPM             = 0;
+
+// ─── Variáveis do filtro de respiração (globais para reset correto) ───────
+float         br_lp1      = 0.0f;   // EMA de amplitude por batida
+float         br_lp2      = 0.0f;   // não usado (mantido para compat.)
+float         br_prev_sig = 0.0f;   // HP anterior
+bool          br_amp_ema_ready = false;
+unsigned long br_last_t   = 0;
+long          br_ints[6]  = {0, 0, 0, 0, 0, 0};
+int           br_idx      = 0;
+int           br_cnt      = 0;
+int           br_beat_cnt = 0;      // batimentos desde última reinicialização do filtro
 
 // ─── Controle de tela e botão ─────────────────────────────────────────────
 int  telaAtual                    = 0;
@@ -164,6 +176,18 @@ void loop() {
       case 5: desenharTelaSummary();     break;
     }
     telaPrecisaRedesenhar = false;
+  }
+
+  // ── Leitura AMG8833 em background (todas as telas exceto temp) ─────────
+  static unsigned long ultimaLeituraAMGbg = 0;
+  if (telaAtual != 1 && millis() - ultimaLeituraAMGbg >= 2000) {
+    ultimaLeituraAMGbg = millis();
+    lerAMG8833();
+    float bgMax = 0;
+    for (int i = 0; i < INTERPOLATED_ROWS * INTERPOLATED_COLS; i++) {
+      if (dest_2d[i] > bgMax) bgMax = dest_2d[i];
+    }
+    if (bgMax > 0.5f) pix_max = bgMax;
   }
 
   // ── Leitura e renderização do AMG8833 (somente na tela de temperatura) ──

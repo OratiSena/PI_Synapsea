@@ -43,6 +43,7 @@ extern bool  btnAnterior;
 extern unsigned long ultimoDebounce;
 extern const unsigned long debounceDelay;
 extern bool  telaPrecisaRedesenhar;
+extern int   respRPM;
 
 // ══════════════════════════════════════════════════════════════════════════
 // FUNÇÕES AUXILIARES
@@ -457,7 +458,7 @@ void desenharTelaPulse() {
     tft.fillRect(10, 216, piBarW, 5, COR_AMARELO);
   } else tft.print("--");
 
-  // Card Resp (placeholder)
+  // Card Resp
   desenharCard(84, 164, 72, 64, COR_ROXO);
   tft.setTextColor(COR_ROXO);
   tft.setTextSize(1);
@@ -466,7 +467,7 @@ void desenharTelaPulse() {
   tft.setTextColor(COR_BRANCO);
   tft.setTextSize(2);
   tft.setCursor(90, 190);
-  tft.print("--");
+  if (respRPM > 0 && dedoDetectado) tft.print(respRPM); else tft.print("--");
   tft.setTextColor(COR_ROXO);
   tft.setTextSize(1);
   tft.setCursor(92, 214);
@@ -516,6 +517,29 @@ void atualizarTelaPulse() {
     prevPI_d   = piVal;
     prevDedo_d = dedoDetectado;
   }
+  static int prevResp_d = -1;
+  if (respRPM != prevResp_d) {
+    tft.fillRect(90, 187, 62, 28, COR_CARD);
+    tft.setTextColor(COR_BRANCO); tft.setTextSize(2); tft.setCursor(90, 190);
+    if (respRPM > 0 && dedoDetectado) tft.print(respRPM); else tft.print("--");
+    prevResp_d = respRPM;
+  }
+  // Card Sinal (atualiza quando qualidade ou estado do dedo muda)
+  static int prevQualPulse_d = -1;
+  if (qualSinal != prevQualPulse_d) {
+    uint16_t corSin = qualSinal >= 2 ? COR_VERDE : (qualSinal == 1 ? COR_LARANJA : COR_CINZA);
+    desenharCard(162, 164, 72, 64, corSin);
+    tft.setTextColor(COR_CINZA); tft.setTextSize(1); tft.setCursor(170, 172); tft.print("Sinal");
+    tft.fillRect(166, 182, 62, 40, COR_CARD);  // limpa texto anterior
+    if (!maxOK || !dedoDetectado || qualSinal == 0) {
+      tft.setTextColor(COR_CINZA); tft.setTextSize(2); tft.setCursor(174, 190); tft.print("--");
+    } else if (qualSinal == 1) {
+      tft.setTextColor(COR_LARANJA); tft.setTextSize(1); tft.setCursor(168, 188); tft.print("Fraco");
+    } else {
+      tft.setTextColor(COR_VERDE); tft.setTextSize(2); tft.setCursor(170, 190); tft.print("Bom");
+    }
+    prevQualPulse_d = qualSinal;
+  }
   atualizarPPGPulse();
 }
 
@@ -547,6 +571,41 @@ void atualizarPPGPulse() {
 // TELA 4 — ANALYSIS
 // ══════════════════════════════════════════════════════════════════════════
 
+// Score composto de estresse 0-100 (maior = mais estresse)
+// Pesos: HRV 40pts, BPM 25pts, PI 20pts, Resp 15pts
+// Retorna -1 se sem leitura válida
+static int calcStressScore() {
+  if (!dedoDetectado || !maxOK) return -1;
+  // Aguarda leituras estabilizarem (igual ao SpO2/HRV que levam alguns segundos)
+  if (!emaBPMReady || !emaSpo2Ready || rrBufCount < 3) return -1;
+  int s = 0;
+  // HRV (40 pts)
+  if      (hrvRMSSD == 0)  s += 25;
+  else if (hrvRMSSD > 60)  s += 0;
+  else if (hrvRMSSD > 40)  s += 10;
+  else if (hrvRMSSD > 25)  s += 20;
+  else if (hrvRMSSD > 10)  s += 30;
+  else                     s += 40;
+  // BPM (25 pts)
+  if      (bpmReal == 0)   s += 12;
+  else if (bpmReal < 65)   s += 0;
+  else if (bpmReal < 80)   s += 8;
+  else if (bpmReal < 95)   s += 16;
+  else                     s += 25;
+  // PI (20 pts)
+  if      (piVal <= 0.0f)  s += 10;
+  else if (piVal > 5.0f)   s += 0;
+  else if (piVal > 2.0f)   s += 7;
+  else if (piVal > 0.5f)   s += 14;
+  else                     s += 20;
+  // Resp (15 pts)
+  if      (respRPM == 0)                        s += 7;
+  else if (respRPM >= 12 && respRPM <= 20)      s += 0;
+  else if (respRPM <= 26)                       s += 8;
+  else                                          s += 15;
+  return s;  // 0-20=Baixo, 21-50=Medio, 51+=Alto
+}
+
 static void _desenharGauge(int cx, int cy, int r, int angFim, uint16_t cor) {
   for (int ang = 180; ang <= 360; ang += 3) {
     float rad = ang * 3.14159f / 180.0f;
@@ -576,13 +635,14 @@ void desenharTelaAnalysis() {
   tft.setCursor(52, 40);
   tft.print("Estresse est.");
 
+  int score = calcStressScore();
   const char* textoEstresse;
   uint16_t    corEstresse;
   int         angGauge;
-  if (!dedoDetectado || hrvRMSSD == 0) { textoEstresse = "--";    corEstresse = COR_CINZA;    angGauge = 270; }
-  else if (hrvRMSSD >= 50)             { textoEstresse = "Baixo"; corEstresse = COR_VERDE;    angGauge = 205; }
-  else if (hrvRMSSD >= 20)             { textoEstresse = "Medio"; corEstresse = COR_AMARELO;  angGauge = 270; }
-  else                                 { textoEstresse = "Alto";  corEstresse = COR_VERMELHO; angGauge = 335; }
+  if (score < 0)       { textoEstresse = "--";    corEstresse = COR_CINZA;    angGauge = 270; }
+  else if (score <= 20){ textoEstresse = "Baixo"; corEstresse = COR_VERDE;    angGauge = constrain(185 + (score * 170) / 100, 185, 355); }
+  else if (score <= 50){ textoEstresse = "Medio"; corEstresse = COR_AMARELO;  angGauge = constrain(185 + (score * 170) / 100, 185, 355); }
+  else                 { textoEstresse = "Alto";  corEstresse = COR_VERMELHO; angGauge = constrain(185 + (score * 170) / 100, 185, 355); }
 
   _desenharGauge(120, 175, 78, angGauge, corEstresse);
 
@@ -592,59 +652,66 @@ void desenharTelaAnalysis() {
   tft.setCursor(120 - len * 9, 165);
   tft.print(textoEstresse);
 
-  // Smile / emoji
-  if (dedoDetectado && hrvRMSSD > 0) {
+  // Emoji
+  if (score >= 0) {
     int ex = 120, ey = 200;
     tft.drawCircle(ex, ey, 14, corEstresse);
     tft.fillCircle(ex - 5, ey - 4, 2, corEstresse);
     tft.fillCircle(ex + 5, ey - 4, 2, corEstresse);
     if (corEstresse == COR_VERDE) {
-      tft.drawLine(ex - 6, ey + 4, ex,     ey + 8, corEstresse);
-      tft.drawLine(ex,     ey + 8, ex + 6, ey + 4, corEstresse);
+      tft.drawLine(ex - 6, ey + 4, ex, ey + 8, corEstresse);
+      tft.drawLine(ex, ey + 8, ex + 6, ey + 4, corEstresse);
     } else if (corEstresse == COR_VERMELHO) {
-      tft.drawLine(ex - 6, ey + 8, ex,     ey + 4, corEstresse);
-      tft.drawLine(ex,     ey + 4, ex + 6, ey + 8, corEstresse);
+      tft.drawLine(ex - 6, ey + 8, ex, ey + 4, corEstresse);
+      tft.drawLine(ex, ey + 4, ex + 6, ey + 8, corEstresse);
     } else {
       tft.drawLine(ex - 6, ey + 6, ex + 6, ey + 6, corEstresse);
     }
   }
 
-  tft.setTextColor(COR_CIANO);
-  tft.setTextSize(1);
-  tft.setCursor(20, 228);
-  tft.print("Baseado em HRV");
-  const char* estadoTxt = !dedoDetectado ? "Sem leitura" : (hrvRMSSD >= 20 ? "Estado estavel" : "Atencao");
-  tft.setTextColor(COR_CINZA);
-  tft.setCursor(20, 244);
-  tft.print(estadoTxt);
-  tft.setCursor(6, 260);
-  tft.print("* Estimativa. Nao e diagnostico.");
+  // Divisor + card de respiração
+  tft.fillRect(0, 218, 240, 2, COR_CINZA_ESC);
+  desenharCard(6, 222, 228, 74, COR_ROXO);
+  tft.setTextColor(COR_ROXO); tft.setTextSize(1); tft.setCursor(14, 230); tft.print("RESPIRACAO");
+  if (respRPM > 0 && dedoDetectado) {
+    uint16_t corR = (respRPM >= 12 && respRPM <= 20) ? COR_VERDE : (respRPM <= 26 ? COR_AMARELO : COR_VERMELHO);
+    tft.setTextColor(corR); tft.setTextSize(3); tft.setCursor(14, 244); tft.print(respRPM);
+    tft.setTextColor(COR_CINZA); tft.setTextSize(1); tft.setCursor(56, 254); tft.print("rpm");
+    const char* rStatus = (respRPM >= 12 && respRPM <= 20) ? "Normal" : (respRPM <= 26 ? "Elevada" : "Alta");
+    tft.setTextColor(corR); tft.setTextSize(2); tft.setCursor(110, 244); tft.print(rStatus);
+    tft.setTextColor(COR_CINZA); tft.setTextSize(1); tft.setCursor(110, 268); tft.print("12-20 rpm");
+  } else {
+    tft.setTextColor(COR_CINZA); tft.setTextSize(2); tft.setCursor(14, 250); tft.print("--");
+    tft.setTextColor(COR_CINZA); tft.setTextSize(1); tft.setCursor(14, 274); tft.print("Aguardando leitura...");
+  }
 
   desenharIndicadorPagina(4, 6);
 }
 
 void atualizarTelaAnalysis() {
-  // Atualiza apenas quando a categoria de estresse muda (reduz pisca)
-  int cat = 0;  // 0=sem leitura, 1=Baixo, 2=Medio, 3=Alto
-  if (dedoDetectado && hrvRMSSD > 0) {
-    if (hrvRMSSD >= 50)      cat = 1;
-    else if (hrvRMSSD >= 20) cat = 2;
-    else                     cat = 3;
+  int score = calcStressScore();
+  // cat: 0=sem leitura, 1=Baixo, 2=Medio, 3=Alto
+  int cat = 0;
+  if (score >= 0) {
+    if      (score <= 20) cat = 1;
+    else if (score <= 50) cat = 2;
+    else                  cat = 3;
   }
-  static int prevCat = -1;
-  if (cat == prevCat) return;
-  prevCat    = cat;
-  prevHRV_d  = hrvRMSSD;
-  prevDedo_d = dedoDetectado;
+  static int prevCat   = -1;
+  static int prevResp  = -1;
+  bool respChanged = (respRPM != prevResp);
+  if (cat == prevCat && !respChanged) return;
+  prevCat   = cat;
+  prevResp  = respRPM;
 
-  tft.fillRect(0, 36, 240, 238, COR_FUNDO);
+  tft.fillRect(0, 36, 240, 182, COR_FUNDO);
   tft.setTextColor(COR_BRANCO); tft.setTextSize(2); tft.setCursor(52, 40); tft.print("Estresse est.");
 
   const char* textoEstresse; uint16_t corEstresse; int angGauge;
   if (cat == 0)      { textoEstresse = "--";    corEstresse = COR_CINZA;    angGauge = 270; }
-  else if (cat == 1) { textoEstresse = "Baixo"; corEstresse = COR_VERDE;    angGauge = 205; }
-  else if (cat == 2) { textoEstresse = "Medio"; corEstresse = COR_AMARELO;  angGauge = 270; }
-  else               { textoEstresse = "Alto";  corEstresse = COR_VERMELHO; angGauge = 335; }
+  else if (cat == 1) { textoEstresse = "Baixo"; corEstresse = COR_VERDE;    angGauge = constrain(185 + (score * 170) / 100, 185, 355); }
+  else if (cat == 2) { textoEstresse = "Medio"; corEstresse = COR_AMARELO;  angGauge = constrain(185 + (score * 170) / 100, 185, 355); }
+  else               { textoEstresse = "Alto";  corEstresse = COR_VERMELHO; angGauge = constrain(185 + (score * 170) / 100, 185, 355); }
 
   _desenharGauge(120, 175, 78, angGauge, corEstresse);
   tft.setTextColor(corEstresse); tft.setTextSize(3);
@@ -660,10 +727,22 @@ void atualizarTelaAnalysis() {
     else if (cat == 3) { tft.drawLine(ex-6,ey+8,ex,ey+4,corEstresse); tft.drawLine(ex,ey+4,ex+6,ey+8,corEstresse); }
     else tft.drawLine(ex-6,ey+6,ex+6,ey+6,corEstresse);
   }
-  tft.setTextColor(COR_CIANO); tft.setTextSize(1); tft.setCursor(20, 228); tft.print("Baseado em HRV");
-  const char* estadoTxt = (cat == 0) ? "Sem leitura" : (cat <= 2 ? "Estado estavel" : "Atencao");
-  tft.setTextColor(COR_CINZA); tft.setCursor(20, 244); tft.print(estadoTxt);
-  tft.setCursor(6, 260); tft.print("* Estimativa. Nao e diagnostico.");
+
+  // Atualizar card de respiração
+  tft.fillRect(6, 222, 228, 74, COR_FUNDO);
+  desenharCard(6, 222, 228, 74, COR_ROXO);
+  tft.setTextColor(COR_ROXO); tft.setTextSize(1); tft.setCursor(14, 230); tft.print("RESPIRACAO");
+  if (respRPM > 0 && dedoDetectado) {
+    uint16_t corR = (respRPM >= 12 && respRPM <= 20) ? COR_VERDE : (respRPM <= 26 ? COR_AMARELO : COR_VERMELHO);
+    tft.setTextColor(corR); tft.setTextSize(3); tft.setCursor(14, 244); tft.print(respRPM);
+    tft.setTextColor(COR_CINZA); tft.setTextSize(1); tft.setCursor(56, 254); tft.print("rpm");
+    const char* rStatus = (respRPM >= 12 && respRPM <= 20) ? "Normal" : (respRPM <= 26 ? "Elevada" : "Alta");
+    tft.setTextColor(corR); tft.setTextSize(2); tft.setCursor(110, 244); tft.print(rStatus);
+    tft.setTextColor(COR_CINZA); tft.setTextSize(1); tft.setCursor(110, 268); tft.print("12-20 rpm");
+  } else {
+    tft.setTextColor(COR_CINZA); tft.setTextSize(2); tft.setCursor(14, 250); tft.print("--");
+    tft.setTextColor(COR_CINZA); tft.setTextSize(1); tft.setCursor(14, 274); tft.print("Aguardando leitura...");
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -715,13 +794,15 @@ void atualizarTelaSummary() {
   if (dedoDetectado) { dtostrf(piVal, 3, 1, buf); strcat(buf, " %"); } else strcpy(buf, "--");
   _cardSum(SUM_X1, SUM_Y3, "PI",     buf,     COR_LARANJA,  COR_BRANCO, COR_LARANJA);
 
-  _cardSum(SUM_X2, SUM_Y3, "Resp",   "-- rpm", COR_ROXO,   COR_BRANCO, COR_ROXO);
+  if (respRPM > 0 && dedoDetectado) snprintf(buf, sizeof(buf), "%d rpm", respRPM); else strcpy(buf, "--");
+  _cardSum(SUM_X2, SUM_Y3, "Resp",   buf,     COR_ROXO,     COR_BRANCO, COR_ROXO);
 
   const char* stressTxt; uint16_t corStr;
-  if (!dedoDetectado || hrvRMSSD == 0) { stressTxt = "--";    corStr = COR_CINZA; }
-  else if (hrvRMSSD >= 50)             { stressTxt = "Baixo"; corStr = COR_VERDE; }
-  else if (hrvRMSSD >= 20)             { stressTxt = "Medio"; corStr = COR_AMARELO; }
-  else                                 { stressTxt = "Alto";  corStr = COR_VERMELHO; }
+  int scoreSum = calcStressScore();
+  if (scoreSum < 0)        { stressTxt = "--";    corStr = COR_CINZA; }
+  else if (scoreSum <= 20) { stressTxt = "Baixo"; corStr = COR_VERDE; }
+  else if (scoreSum <= 50) { stressTxt = "Medio"; corStr = COR_AMARELO; }
+  else                     { stressTxt = "Alto";  corStr = COR_VERMELHO; }
   _cardSum(SUM_X1, SUM_Y4, "Stress", stressTxt, 0x9FFF, corStr, 0x9FFF);
 
   const char* statTxt; uint16_t corStat;
