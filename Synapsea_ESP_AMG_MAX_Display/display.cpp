@@ -43,6 +43,10 @@ extern bool  btnAnterior;
 extern unsigned long ultimoDebounce;
 extern const unsigned long debounceDelay;
 extern bool  telaPrecisaRedesenhar;
+
+// ─── Forward declarations (funções auxiliares de touch) ───────────────────
+static void _redesenharZoom();
+static void _tratarTap(int x, int y);
 extern int   respRPM;
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -191,8 +195,9 @@ void desenharTelaHome() {
     uint16_t cT = (pix_max < 0.5f) ? COR_CINZA : (tOK ? COR_VERDE : COR_VERMELHO);
     tft.setTextColor(cT); tft.setTextSize(2); tft.setCursor(34, 195);
     if (pix_max > 0.5f) {
-      char tBuf[6]; dtostrf(pix_max, 4, 1, tBuf); tft.print(tBuf);
-      tft.setTextSize(1); tft.setCursor(82, 201); tft.print("C");
+      float tDisp = tempUnitCelsius ? pix_max : (pix_max * 9.0f / 5.0f + 32.0f);
+      char tBuf[7]; dtostrf(tDisp, 4, 1, tBuf); tft.print(tBuf);
+      tft.setTextSize(1); tft.setCursor(82, 201); tft.print(tempUnitCelsius ? "C" : "F");
     } else {
       tft.print("--");
     }
@@ -239,8 +244,9 @@ void atualizarTelaHome() {
     uint16_t cT = (pix_max < 0.5f) ? COR_CINZA : (tOK ? COR_VERDE : COR_VERMELHO);
     tft.setTextColor(cT); tft.setTextSize(2); tft.setCursor(34, 195);
     if (pix_max > 0.5f) {
-      char tBuf[6]; dtostrf(pix_max, 4, 1, tBuf); tft.print(tBuf);
-      tft.setTextSize(1); tft.setCursor(82, 201); tft.print("C");
+      float tDisp = tempUnitCelsius ? pix_max : (pix_max * 9.0f / 5.0f + 32.0f);
+      char tBuf[7]; dtostrf(tDisp, 4, 1, tBuf); tft.print(tBuf);
+      tft.setTextSize(1); tft.setCursor(82, 201); tft.print(tempUnitCelsius ? "C" : "F");
     } else tft.print("--");
     prevTempVal = pix_max;
   }
@@ -414,6 +420,9 @@ void desenharTelaPulse() {
   desenharCabecalho("Pulse", COR_CIANO);
   desenharIconeBateria(215, 6);
 
+  // Botões de zoom (–  valor  +) na faixa y=34..53, à esquerda do BPM
+  _redesenharZoom();
+
   // BPM no canto da área PPG
   tft.setTextColor(COR_BRANCO);
   tft.setTextSize(3);
@@ -546,7 +555,9 @@ void atualizarTelaPulse() {
 void atualizarPPGPulse() {
   long delta  = irValue - ppgPrevIR;
   ppgPrevIR   = irValue;
-  int amostra = constrain((int)(delta / 600), -40, 40);
+  // ppgZoom: 1=menor amplitude, 2=padrão, 3-5=amplificado
+  int divisor = max(1, 1200 / ppgZoom);
+  int amostra = constrain((int)(delta / divisor), -(PPG_AREA_H / 2 - 4), PPG_AREA_H / 2 - 4);
   ppgBuf[ppgPos] = amostra;
 
   int x    = PPG_AREA_X + ppgPos + 1;
@@ -779,7 +790,8 @@ void desenharTelaSummary() {
 void atualizarTelaSummary() {
   char buf[16];
 
-  dtostrf(pix_max, 4, 1, buf); strcat(buf, "C");
+  float tDisp = tempUnitCelsius ? pix_max : (pix_max * 9.0f / 5.0f + 32.0f);
+  dtostrf(tDisp, 4, 1, buf); strcat(buf, tempUnitCelsius ? "C" : "F");
   _cardSum(SUM_X1, SUM_Y1, "Temp",   buf,     COR_VERMELHO, COR_BRANCO, COR_VERMELHO);
 
   if (dedoDetectado && bpmReal > 0) snprintf(buf, sizeof(buf), "%d bpm", bpmReal); else strcpy(buf, "--");
@@ -846,8 +858,209 @@ void verificarBotaoTrocaTela() {
       (millis() - ultimoDebounce > debounceDelay)) {
     ultimoDebounce       = millis();
     telaAtual            = (telaAtual + 1) % 6;
+    mostrarPainelConfig   = false;
     telaPrecisaRedesenhar = true;
   }
   btnAnterior = btnAtual;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// TOUCH — painel de configurações e gestos de swipe
+// ══════════════════════════════════════════════════════════════════════════
+
+// ─── Externos necessários ────────────────────────────────────────────────
+extern XPT2046_Touchscreen ts;
+extern bool mostrarPainelConfig;
+extern bool tempUnitCelsius;
+extern int  ppgZoom;
+
+// ─── Conversão de coordenada raw do XPT2046 para pixels de tela ──────────
+// Display em rotation=2 (180°) → eixos invertidos.
+// Ajuste TOUCH_X/Y_MIN/MAX em config.h se o toque estiver descalibrado.
+static inline int _tX(int raw) {
+  return constrain(map(raw, TOUCH_X_MAX, TOUCH_X_MIN, 0, 239), 0, 239);
+}
+static inline int _tY(int raw) {
+  return constrain(map(raw, TOUCH_Y_MAX, TOUCH_Y_MIN, 0, 319), 0, 319);
+}
+
+// ─── Redesenha botões de zoom no topo da área de waveform (Pulse) ────────
+static void _redesenharZoom() {
+  // Área: x=58..150  y=34..55  (acima da borda do gráfico PPG)
+  tft.fillRect(58, 34, 94, 20, COR_FUNDO);
+  // Botão  –
+  tft.drawRect(58, 34, 18, 20, COR_CIANO);
+  tft.setTextColor(COR_CIANO); tft.setTextSize(2);
+  tft.setCursor(62, 36); tft.print("-");
+  // Valor do zoom
+  tft.setTextColor(COR_BRANCO); tft.setTextSize(2);
+  tft.setCursor(82, 36); tft.print(ppgZoom);
+  tft.setTextColor(COR_CINZA); tft.setTextSize(1);
+  tft.setCursor(95, 44); tft.print("x");
+  // Botão  +
+  tft.drawRect(104, 34, 18, 20, COR_CIANO);
+  tft.setTextColor(COR_CIANO); tft.setTextSize(2);
+  tft.setCursor(107, 36); tft.print("+");
+}
+
+// ─── Painel de configurações (sobreposto, y=196..319) ────────────────────
+void desenharPainelConfig() {
+  const int pY = 196;
+  tft.fillRect(0, pY, 240, 124, 0x1082);            // fundo escuro semi-opaco
+  tft.drawRect(0, pY, 240, 124, COR_CIANO);
+  tft.drawLine(0, pY + 2, 240, pY + 2, COR_CIANO);
+
+  // Título
+  tft.setTextColor(COR_CIANO); tft.setTextSize(1);
+  tft.setCursor(6, pY + 7); tft.print("CONFIGURACOES");
+
+  // Botão fechar (X) no canto superior direito
+  tft.drawRect(202, pY + 2, 36, 26, COR_VERMELHO);
+  tft.setTextColor(COR_VERMELHO); tft.setTextSize(2);
+  tft.setCursor(212, pY + 6); tft.print("X");
+
+  // Label unidade de temperatura
+  tft.setTextColor(COR_BRANCO); tft.setTextSize(1);
+  tft.setCursor(6, pY + 24); tft.print("Unidade de Temperatura:");
+
+  // Botão °C
+  uint16_t corC = tempUnitCelsius ? COR_CIANO : COR_CINZA_ESC;
+  if (tempUnitCelsius) tft.fillRect(7, pY + 38, 52, 28, 0x0841);
+  tft.drawRect(6, pY + 37, 54, 30, corC);
+  tft.setTextColor(corC); tft.setTextSize(2);
+  tft.setCursor(18, pY + 44); tft.print((char)0xF8); tft.print("C");
+
+  // Botão °F
+  uint16_t corF = !tempUnitCelsius ? COR_CIANO : COR_CINZA_ESC;
+  if (!tempUnitCelsius) tft.fillRect(73, pY + 38, 52, 28, 0x0841);
+  tft.drawRect(72, pY + 37, 54, 30, corF);
+  tft.setTextColor(corF); tft.setTextSize(2);
+  tft.setCursor(84, pY + 44); tft.print((char)0xF8); tft.print("F");
+
+  // Dica de fechamento
+  tft.setTextColor(COR_CINZA); tft.setTextSize(1);
+  tft.setCursor(6, pY + 92);  tft.print("Deslize para baixo p/ fechar");
+  tft.setCursor(6, pY + 105); tft.print("Toque X para fechar");
+
+  // Redesenha bolinhas de página por cima do painel
+  desenharIndicadorPagina(telaAtual, 6);
+}
+
+// ─── Tratamento de toque curto (tap) ─────────────────────────────────────
+static void _tratarTap(int x, int y) {
+  // ── Painel de configurações visível ──────────────────────────────────
+  if (mostrarPainelConfig) {
+    const int pY = 196;
+    // Botão X (fechar): rect(202, pY+2, 36, 26)
+    if (x >= 202 && x <= 238 && y >= pY + 2 && y <= pY + 28) {
+      mostrarPainelConfig   = false;
+      telaPrecisaRedesenhar = true;
+      return;
+    }
+    // Botão °C: rect(6, pY+37, 54, 30)
+    if (x >= 6 && x <= 60 && y >= pY + 37 && y <= pY + 67) {
+      if (!tempUnitCelsius) {
+        tempUnitCelsius = true;
+        desenharPainelConfig();
+        telaPrecisaRedesenhar = true;  // força redesenho p/ valor atualizado
+      }
+      return;
+    }
+    // Botão °F: rect(72, pY+37, 54, 30)
+    if (x >= 72 && x <= 126 && y >= pY + 37 && y <= pY + 67) {
+      if (tempUnitCelsius) {
+        tempUnitCelsius = false;
+        desenharPainelConfig();
+        telaPrecisaRedesenhar = true;
+      }
+      return;
+    }
+    return;  // tap fora das opções: ignora
+  }
+
+  // ── Tela Pulse (3): botões de zoom ───────────────────────────────────
+  if (telaAtual == 3) {
+    // Botão  –  (58..76, 34..54)
+    if (x >= 56 && x <= 78 && y >= 32 && y <= 56) {
+      ppgZoom = constrain(ppgZoom - 1, 1, 5);
+      _redesenharZoom();
+      return;
+    }
+    // Botão  +  (104..122, 34..54)
+    if (x >= 102 && x <= 124 && y >= 32 && y <= 56) {
+      ppgZoom = constrain(ppgZoom + 1, 1, 5);
+      _redesenharZoom();
+      return;
+    }
+  }
+}
+
+// ─── Função principal de detecção de gestos ──────────────────────────────
+void verificarTouch() {
+  static bool          wasPressed    = false;
+  static int           startX        = 0, startY = 0;
+  static int           lastX         = 0, lastY  = 0;
+  static unsigned long pressedAt     = 0;
+
+  bool touched = ts.touched();
+
+  if (touched) {
+    TS_Point p = ts.getPoint();
+    int x = _tX(p.x);
+    int y = _tY(p.y);
+
+    if (!wasPressed) {
+      startX    = x;
+      startY    = y;
+      pressedAt = millis();
+      wasPressed = true;
+    }
+    lastX = x;
+    lastY = y;
+
+  } else if (wasPressed) {
+    // Dedo levantou — analisar gesto
+    int dx = lastX - startX;
+    int dy = lastY - startY;
+    unsigned long dt = millis() - pressedAt;
+    wasPressed = false;
+
+    if (dt > 800) return;  // toque muito longo: ignora
+
+    bool hSwipe = (abs(dx) >= TOUCH_SWIPE_MIN) && (abs(dx) > abs(dy));
+    bool vSwipe = (abs(dy) >= TOUCH_SWIPE_MIN) && (abs(dy) > abs(dx));
+    bool isTap  = (abs(dx) < 15) && (abs(dy) < 15) && (dt < 400);
+
+    if (hSwipe) {
+      // ── Swipe horizontal: navegar telas ────────────────────────────
+      mostrarPainelConfig = false;
+      if (dx < 0) {
+        // Desliza para a ESQUERDA → próxima tela
+        telaAtual = (telaAtual + 1) % 6;
+      } else {
+        // Desliza para a DIREITA → tela anterior
+        telaAtual = (telaAtual - 1 + 6) % 6;
+      }
+      telaPrecisaRedesenhar = true;
+
+    } else if (vSwipe) {
+      if (dy < 0) {
+        // ── Swipe para CIMA → abrir painel de configurações ─────────
+        if (!mostrarPainelConfig) {
+          mostrarPainelConfig = true;
+          desenharPainelConfig();
+        }
+      } else {
+        // ── Swipe para BAIXO → fechar painel de configurações ───────
+        if (mostrarPainelConfig) {
+          mostrarPainelConfig   = false;
+          telaPrecisaRedesenhar = true;
+        }
+      }
+
+    } else if (isTap) {
+      _tratarTap(lastX, lastY);
+    }
+  }
 }
 

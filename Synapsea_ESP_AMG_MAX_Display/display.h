@@ -31,3 +31,7 @@ void atualizarPPGPulse();
 
 // ─── Navegação ────────────────────────────────────────────────────────────
 void verificarBotaoTrocaTela();
+
+// ─── Touch ────────────────────────────────────────────────────────────────
+void verificarTouch();
+void desenharPainelConfig();

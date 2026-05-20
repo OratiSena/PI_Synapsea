@@ -271,8 +271,7 @@ void lerMAX30102() {
   unsigned long agoraNow = millis();
   if (agoraNow - ultimoDebugMAX >= 5000) {
     ultimoDebugMAX = agoraNow;
-    Serial.print("IR=");    Serial.print(irValue);
-    Serial.print(" RED=");  Serial.print(redValue);
+    Serial.print("TEMP="); Serial.print(pix_max, 1);
     Serial.print(" DEDO="); Serial.print(dedoDetectado);
     Serial.print(" BPM=");  Serial.print(bpmReal);
     Serial.print(" SpO2="); Serial.print(spo2Real);
@@ -280,14 +279,6 @@ void lerMAX30102() {
     Serial.print(" HRV=");
     if (hrvRMSSD > 0) Serial.print(hrvRMSSD); else Serial.print("--");
     Serial.print(" RESP=");
-    if (respRPM > 0) Serial.print(respRPM); else Serial.print("--");
-    Serial.print(" br_cnt="); Serial.print(br_cnt);
-    Serial.print(" br_beat="); Serial.print(br_beat_cnt);
-    if (mm_ir_n > 0) {
-      long irDC_now = (long)(mm_ir_sum / mm_ir_n);
-      Serial.print(" irDC="); Serial.print(irDC_now);
-      Serial.print(" brLP="); Serial.print((long)br_lp1);
-      Serial.print(" brHP="); Serial.println(irDC_now - (long)br_lp1);
-    } else Serial.println();
+    if (respRPM > 0) Serial.println(respRPM); else Serial.println("--");
   }
 }

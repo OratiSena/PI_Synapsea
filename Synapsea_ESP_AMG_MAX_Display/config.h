@@ -130,3 +130,32 @@ extern bool btnAnterior;
 extern unsigned long ultimoDebounce;
 extern const unsigned long debounceDelay;
 extern bool telaPrecisaRedesenhar;
+
+// ─── Touchscreen (XPT2046) ────────────────────────────────────────────────
+// GPIO 34 e 35 são somente entrada no ESP32 → usados para T_DO e T_IRQ.
+// GPIO 32, 13 e 12 são pinos de saída disponíveis → usados para CLK, CS e DIN.
+//
+//   Pinagem final:
+//     T_CLK → GPIO 32   (saída — clock SPI)
+//     T_CS  → GPIO 13   (saída — chip select)
+//     T_DIN → GPIO 12   (saída — MOSI)
+//     T_DO  → GPIO 35   (entrada apenas — MISO)
+//     T_IRQ → GPIO 34   (entrada apenas — interrupção)
+#include <XPT2046_Touchscreen.h>
+#define T_CLK  32
+#define T_CS   13
+#define T_DIN  12
+#define T_DO   35
+#define T_IRQ  34
+
+// Calibração raw do XPT2046 (ajuste se o toque estiver descalibrado)
+#define TOUCH_X_MIN   340
+#define TOUCH_X_MAX  3900
+#define TOUCH_Y_MIN   250
+#define TOUCH_Y_MAX  3800
+#define TOUCH_SWIPE_MIN 45   // pixels mínimos para detectar swipe
+
+extern XPT2046_Touchscreen ts;
+extern bool mostrarPainelConfig;   // true = painel de config sobreposto
+extern bool tempUnitCelsius;       // true=°C  false=°F
+extern int  ppgZoom;               // 1-5, zoom da onda PPG (padrão=2)

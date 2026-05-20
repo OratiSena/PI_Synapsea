@@ -4,7 +4,7 @@
 //   config.h      → defines, includes e declarações extern
 //   sensorAMG.h/cpp → lógica do sensor térmico AMG8833
 //   sensorMAX.h/cpp → lógica do sensor MAX30102 (BPM, SpO2, PI, HRV)
-//   display.h/cpp   → tudo relacionado ao display ILI9341
+//   display.h/cpp   → tudo relacionado ao display ILI9341 + touch
 // ──────────────────────────────────────────────────────────────────────────
 
 #include "config.h"
@@ -17,6 +17,15 @@ DFRobot_ST7789_240x320_HW_SPI tft(TFT_DC, TFT_CS, TFT_RST);
 Adafruit_AMG88xx amg;
 TwoWire  I2C_MAX = TwoWire(1);
 MAX30105 particleSensor;
+
+// ─── Touch (XPT2046 via HSPI) ────────────────────────────────────────────
+SPIClass          touchSPI(HSPI);
+XPT2046_Touchscreen ts(T_CS, T_IRQ);
+
+// ─── Estado do Touch / Configurações ─────────────────────────────────────
+bool mostrarPainelConfig = false;
+bool tempUnitCelsius     = true;
+int  ppgZoom             = 2;
 
 // ─── Variáveis do sensor AMG8833 ──────────────────────────────────────────
 float pixels[AMG_COLS * AMG_ROWS];
@@ -152,6 +161,10 @@ void setup() {
 
   pinMode(BTN_PIN, INPUT_PULLUP);
 
+  // ─── Touch (HSPI: SCK=32, MISO=35, MOSI=12, CS=13, IRQ=34) ─────────────
+  touchSPI.begin(T_CLK, T_DO, T_DIN, T_CS);
+  ts.begin(touchSPI);
+
   I2C_MAX.begin(25, 26);
   scannerI2CMAX();
   iniciarMAX30102();
@@ -159,6 +172,7 @@ void setup() {
 
 void loop() {
   verificarBotaoTrocaTela();
+  verificarTouch();
   lerMAX30102();
 
   // ── Redesenho completo ao trocar tela ────────────────────────────────────
@@ -220,12 +234,17 @@ void loop() {
     tft.setCursor(158, 40); tft.print("MAX:");
     tft.setCursor(158, 64); tft.print("MIN:");
     tft.setTextColor(0xF800);
-    tft.setCursor(158, 51); tft.print(pix_max, 1); tft.print("C");
+    { float v = tempUnitCelsius ? pix_max : (pix_max * 9.0f/5.0f + 32.0f);
+      tft.setCursor(158, 51); tft.print(v, 1); tft.print(tempUnitCelsius ? "C" : "F"); }
     tft.setTextColor(0x07FF);
-    tft.setCursor(158, 75); tft.print(frameMin, 1); tft.print("C");
+    { float v = tempUnitCelsius ? frameMin : (frameMin * 9.0f/5.0f + 32.0f);
+      tft.setCursor(158, 75); tft.print(v, 1); tft.print(tempUnitCelsius ? "C" : "F"); }
 
     // pix_max NÃO é resetado aqui: persiste para Home e Summary
-    delay(50);
+
+    // Touch verificado novamente após render (drawpixels bloqueia ~150ms)
+    verificarTouch();
+    delay(30);
     return;
   }
 
