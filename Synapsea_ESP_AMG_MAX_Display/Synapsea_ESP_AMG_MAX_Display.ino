@@ -26,6 +26,7 @@ XPT2046_Touchscreen ts(T_CS, T_IRQ);
 bool mostrarPainelConfig = false;
 bool tempUnitCelsius     = true;
 int  ppgZoom             = 2;
+bool amgFrozen           = false;   // true = imagem térmica congelada (tap)
 
 // ─── Variáveis do sensor AMG8833 ──────────────────────────────────────────
 float pixels[AMG_COLS * AMG_ROWS];
@@ -206,39 +207,50 @@ void loop() {
 
   // ── Leitura e renderização do AMG8833 (somente na tela de temperatura) ──
   if (telaAtual == 1) {
-    pix_max = 0;     // reset antes da leitura para drawpixels achar o novo max
-    lerAMG8833();
+    if (!amgFrozen) {
+      pix_max = 0;     // reset antes da leitura para drawpixels achar o novo max
+      lerAMG8833();
 
-    // Temperatura mínima do frame
-    float frameMin = 100.0f;
-    for (int i = 0; i < INTERPOLATED_ROWS * INTERPOLATED_COLS; i++) {
-      if (dest_2d[i] > 0.0f && dest_2d[i] < frameMin) frameMin = dest_2d[i];
+      // Temperatura mínima do frame
+      float frameMin = 100.0f;
+      for (int i = 0; i < INTERPOLATED_ROWS * INTERPOLATED_COLS; i++) {
+        if (dest_2d[i] > 0.0f && dest_2d[i] < frameMin) frameMin = dest_2d[i];
+      }
+
+      uint16_t boxSize = min(tft.width() / INTERPOLATED_COLS, 240 / INTERPOLATED_ROWS);
+      drawpixels(dest_2d, INTERPOLATED_ROWS, INTERPOLATED_COLS, boxSize, boxSize, false);
+
+      // Mira (crosshair) no ponto mais quente
+      int cx = (int)pos_x + boxSize / 2;
+      int cy = (int)pos_y + boxSize / 2;
+      tft.drawCircle(cx, cy, 5, 0xFFFF);
+      tft.drawLine(cx - 7, cy, cx - 5, cy, 0xFFFF);
+      tft.drawLine(cx + 5, cy, cx + 7, cy, 0xFFFF);
+      tft.drawLine(cx, cy - 7, cx, cy - 5, 0xFFFF);
+      tft.drawLine(cx, cy + 5, cx, cy + 7, 0xFFFF);
+
+      // Overlay MAX/MIN redesenhado sobre a imagem a cada frame
+      tft.fillRect(152, 36, 88, 60, 0x0841);
+      tft.drawRect(152, 36, 88, 60, 0x2104);
+      tft.setTextColor(0x4208); tft.setTextSize(1);
+      tft.setCursor(158, 40); tft.print("MAX:");
+      tft.setCursor(158, 64); tft.print("MIN:");
+      tft.setTextColor(0xF800);
+      { float v = tempUnitCelsius ? pix_max : (pix_max * 9.0f/5.0f + 32.0f);
+        tft.setCursor(158, 51); tft.print(v, 1); tft.print(tempUnitCelsius ? "C" : "F"); }
+      tft.setTextColor(0x07FF);
+      { float v = tempUnitCelsius ? frameMin : (frameMin * 9.0f/5.0f + 32.0f);
+        tft.setCursor(158, 75); tft.print(v, 1); tft.print(tempUnitCelsius ? "C" : "F"); }
+
+      // Apaga indicador PAUSED quando não está congelado
+      tft.fillRect(4, 292, 86, 13, 0x0000);  // COR_FUNDO
+
+    } else {
+      // ── Imagem congelada: só desenha badge ──────────────────────────
+      tft.fillRect(4, 292, 86, 13, 0x3000);
+      tft.setTextColor(0xFD20); tft.setTextSize(1);
+      tft.setCursor(6, 294); tft.print("|| PAUSED  Toque p/ retomar");
     }
-
-    uint16_t boxSize = min(tft.width() / INTERPOLATED_COLS, 240 / INTERPOLATED_ROWS);
-    drawpixels(dest_2d, INTERPOLATED_ROWS, INTERPOLATED_COLS, boxSize, boxSize, false);
-
-    // Mira (crosshair) no ponto mais quente
-    int cx = (int)pos_x + boxSize / 2;
-    int cy = (int)pos_y + boxSize / 2;
-    tft.drawCircle(cx, cy, 5, 0xFFFF);
-    tft.drawLine(cx - 7, cy, cx - 5, cy, 0xFFFF);
-    tft.drawLine(cx + 5, cy, cx + 7, cy, 0xFFFF);
-    tft.drawLine(cx, cy - 7, cx, cy - 5, 0xFFFF);
-    tft.drawLine(cx, cy + 5, cx, cy + 7, 0xFFFF);
-
-    // Overlay MAX/MIN redesenhado sobre a imagem a cada frame
-    tft.fillRect(152, 36, 88, 60, 0x0841);
-    tft.drawRect(152, 36, 88, 60, 0x2104);
-    tft.setTextColor(0x4208); tft.setTextSize(1);
-    tft.setCursor(158, 40); tft.print("MAX:");
-    tft.setCursor(158, 64); tft.print("MIN:");
-    tft.setTextColor(0xF800);
-    { float v = tempUnitCelsius ? pix_max : (pix_max * 9.0f/5.0f + 32.0f);
-      tft.setCursor(158, 51); tft.print(v, 1); tft.print(tempUnitCelsius ? "C" : "F"); }
-    tft.setTextColor(0x07FF);
-    { float v = tempUnitCelsius ? frameMin : (frameMin * 9.0f/5.0f + 32.0f);
-      tft.setCursor(158, 75); tft.print(v, 1); tft.print(tempUnitCelsius ? "C" : "F"); }
 
     // pix_max NÃO é resetado aqui: persiste para Home e Summary
 

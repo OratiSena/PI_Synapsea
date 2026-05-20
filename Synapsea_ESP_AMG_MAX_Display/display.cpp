@@ -26,12 +26,14 @@
 #define PPG_AREA_W  218
 #define PPG_AREA_H  98
 
-static int  ppgBuf[PPG_W]  = {0};
-static int  ppgPos          = 0;
-static long ppgPrevIR       = 0;
+static int   ppgBuf[PPG_W]  = {0};
+static int   ppgPos         = 0;
+static long  ppgPrevIR      = 0;
+static float ppgPeakAbs     = 500.0f;  // pico adaptativo do sinal PPG
 static int  ecgBuf2[ECG_W] = {0};
 static int  ecgPos2         = 0;
 static long prevIR2         = 0;
+static bool histPopupVisible = false;  // popup de histórico BPM/SpO2 ativo
 
 // ─── Relógio simulado ─────────────────────────────────────────────────────
 static int horaSimulada    = 14;
@@ -365,6 +367,7 @@ void desenharTelaHeart() {
 }
 
 void atualizarTelaHeart() {
+  if (histPopupVisible) return;  // não sobrescreve popup de histórico
   if (bpmReal != prevBPM_d || (bool)dedoDetectado != (bool)prevDedo_d) {
     tft.fillRect(132, 82, 100, 60, COR_FUNDO);
     tft.setTextColor(COR_BRANCO);
@@ -555,9 +558,23 @@ void atualizarTelaPulse() {
 void atualizarPPGPulse() {
   long delta  = irValue - ppgPrevIR;
   ppgPrevIR   = irValue;
-  // ppgZoom: 1=menor amplitude, 2=padrão, 3-5=amplificado
-  int divisor = max(1, 1200 / ppgZoom);
-  int amostra = constrain((int)(delta / divisor), -(PPG_AREA_H / 2 - 4), PPG_AREA_H / 2 - 4);
+
+  // Peak-hold com decaimento lento: ataque instantâneo, decai ~0,05% por amostra.
+  float af = fabsf((float)delta);
+  if (af > ppgPeakAbs) ppgPeakAbs = af;                            // ataque instantâneo
+  else                 ppgPeakAbs = ppgPeakAbs * 0.9995f + af * 0.0005f;  // decaimento lento
+  ppgPeakAbs = max(ppgPeakAbs, 10.0f);
+
+  // Zoom: escala geométrica — cada nível é ~2× maior que o anterior.
+  // zoom=1 → pico ~15% da altura  (sinal muito comprimido)
+  // zoom=2 → pico ~30%            (default "pequeno")
+  // zoom=3 → pico ~60%            (confortável — recomendado)
+  // zoom=4 → pico ~100%           (cheio, começa a clipar nos picos)
+  // zoom=5 → pico ~200%           (amplificado, clipado — para sinais fracos)
+  static const float zoomTable[5] = {0.15f, 0.30f, 0.60f, 1.00f, 2.00f};
+  float halfH = (float)(PPG_AREA_H / 2 - 4);
+  float scale = (halfH * zoomTable[ppgZoom - 1]) / ppgPeakAbs;
+  int amostra = constrain((int)((float)delta * scale), -(int)halfH, (int)halfH);
   ppgBuf[ppgPos] = amostra;
 
   int x    = PPG_AREA_X + ppgPos + 1;
@@ -886,17 +903,15 @@ static inline int _tY(int raw) {
 
 // ─── Redesenha botões de zoom no topo da área de waveform (Pulse) ────────
 static void _redesenharZoom() {
-  // Área: x=58..150  y=34..55  (acima da borda do gráfico PPG)
-  tft.fillRect(58, 34, 94, 20, COR_FUNDO);
+  // Área: x=58..122  y=34..55
+  tft.fillRect(58, 34, 66, 20, COR_FUNDO);
   // Botão  –
   tft.drawRect(58, 34, 18, 20, COR_CIANO);
   tft.setTextColor(COR_CIANO); tft.setTextSize(2);
   tft.setCursor(62, 36); tft.print("-");
-  // Valor do zoom
+  // Valor do zoom (ex: "3x")
   tft.setTextColor(COR_BRANCO); tft.setTextSize(2);
-  tft.setCursor(82, 36); tft.print(ppgZoom);
-  tft.setTextColor(COR_CINZA); tft.setTextSize(1);
-  tft.setCursor(95, 44); tft.print("x");
+  tft.setCursor(80, 36); tft.print(ppgZoom); tft.print("x");
   // Botão  +
   tft.drawRect(104, 34, 18, 20, COR_CIANO);
   tft.setTextColor(COR_CIANO); tft.setTextSize(2);
@@ -946,8 +961,65 @@ void desenharPainelConfig() {
   desenharIndicadorPagina(telaAtual, 6);
 }
 
+// ─── Popup: histórico de leituras BPM / SpO2 ─────────────────────────────
+static void _mostrarHistorico() {
+  tft.fillRoundRect(10, 55, 220, 218, 8, 0x0841);
+  tft.drawRoundRect(10, 55, 220, 218, 8, COR_CIANO);
+
+  // Título
+  tft.setTextColor(COR_CIANO); tft.setTextSize(1);
+  tft.setCursor(18, 63); tft.print("Historico de Leituras");
+  tft.drawLine(10, 74, 230, 74, 0x2104);
+
+  // ── BPM ──────────────────────────────────────────────────────────────
+  tft.setTextColor(COR_VERMELHO); tft.setTextSize(1);
+  tft.setCursor(18, 80); tft.print("BPM (ultimos 8):");
+  int cnt = min(bpmBufCount, BPM_BUF_SIZE);
+  int si  = (bpmBufIdx - cnt + BPM_BUF_SIZE) % BPM_BUF_SIZE;
+  int cx = 18, cy = 93;
+  for (int i = 0; i < cnt; i++) {
+    int idx = (si + i) % BPM_BUF_SIZE;
+    tft.setTextColor(COR_BRANCO); tft.setTextSize(2);
+    tft.setCursor(cx, cy); tft.print((int)bpmBuffer[idx]);
+    cx += 54;
+    if (cx > 180) { cx = 18; cy += 22; }
+  }
+  if (cnt == 0) { tft.setTextColor(COR_CINZA); tft.setTextSize(1); tft.setCursor(18, 93); tft.print("Sem leituras ainda"); }
+
+  cy = max(cy + 26, 140);
+  tft.drawLine(10, cy, 230, cy, 0x2104);
+  cy += 6;
+
+  // ── SpO2 ─────────────────────────────────────────────────────────────
+  tft.setTextColor(COR_CIANO); tft.setTextSize(1);
+  tft.setCursor(18, cy); tft.print("SpO2 (ultimos 5):");
+  cy += 13;
+  int scnt = min(spo2BufCount, SPO2_BUF_SIZE);
+  int ssi  = (spo2BufIdx - scnt + SPO2_BUF_SIZE) % SPO2_BUF_SIZE;
+  cx = 18;
+  for (int i = 0; i < scnt; i++) {
+    int idx = (ssi + i) % SPO2_BUF_SIZE;
+    tft.setTextColor(COR_BRANCO); tft.setTextSize(2);
+    tft.setCursor(cx, cy); tft.print(spo2Buffer[idx]);
+    tft.setTextColor(COR_CINZA); tft.setTextSize(1);
+    tft.setCursor(cx + 28, cy + 10); tft.print("%");
+    cx += 46;
+  }
+  if (scnt == 0) { tft.setTextColor(COR_CINZA); tft.setTextSize(1); tft.setCursor(18, cy); tft.print("Sem leituras ainda"); }
+
+  tft.setTextColor(COR_CINZA); tft.setTextSize(1);
+  tft.setCursor(28, 262); tft.print("Toque p/ fechar");
+}
+
 // ─── Tratamento de toque curto (tap) ─────────────────────────────────────
 static void _tratarTap(int x, int y) {
+  // ── Histórico visível: qualquer tap fecha ────────────────────────────
+  if (histPopupVisible) {
+    histPopupVisible      = false;
+    telaPrecisaRedesenhar = true;
+    return;
+  }
+
   // ── Painel de configurações visível ──────────────────────────────────
   if (mostrarPainelConfig) {
     const int pY = 196;
@@ -978,17 +1050,44 @@ static void _tratarTap(int x, int y) {
     return;  // tap fora das opções: ignora
   }
 
+  // ── Tela Temperatura (1): tap = congelar/descongelar imagem ──────────
+  if (telaAtual == 1) {
+    amgFrozen = !amgFrozen;
+    if (!amgFrozen) {
+      // Ao descongelar, força redesenho completo para limpar o badge PAUSED
+      telaPrecisaRedesenhar = true;
+    }
+    return;
+  }
+
+  // ── Tela Heart (2): tap no BPM, SpO2 ou HRV = mostrar histórico ──────
+  if (telaAtual == 2) {
+    bool tapBPM = (x >= 120 && x <= 235 && y >= 75  && y <= 165);
+    bool tapCard= (x >= 6   && x <= 235 && y >= 165 && y <= 230);
+    if (tapBPM || tapCard) {
+      histPopupVisible = true;
+      _mostrarHistorico();
+      return;
+    }
+  }
+
   // ── Tela Pulse (3): botões de zoom ───────────────────────────────────
   if (telaAtual == 3) {
     // Botão  –  (58..76, 34..54)
     if (x >= 56 && x <= 78 && y >= 32 && y <= 56) {
       ppgZoom = constrain(ppgZoom - 1, 1, 5);
+      memset(ppgBuf, 0, sizeof(ppgBuf));  // buffer limpo → efeito imediato
+      ppgPeakAbs = 500.0f;               // reset do peak para re-adaptar
+      ppgPos = 0;
       _redesenharZoom();
       return;
     }
     // Botão  +  (104..122, 34..54)
     if (x >= 102 && x <= 124 && y >= 32 && y <= 56) {
       ppgZoom = constrain(ppgZoom + 1, 1, 5);
+      memset(ppgBuf, 0, sizeof(ppgBuf));  // buffer limpo → efeito imediato
+      ppgPeakAbs = 500.0f;               // reset do peak para re-adaptar
+      ppgPos = 0;
       _redesenharZoom();
       return;
     }

@@ -159,3 +159,4 @@ extern XPT2046_Touchscreen ts;
 extern bool mostrarPainelConfig;   // true = painel de config sobreposto
 extern bool tempUnitCelsius;       // true=°C  false=°F
 extern int  ppgZoom;               // 1-5, zoom da onda PPG (padrão=2)
+extern bool amgFrozen;             // true = imagem térmica congelada (tap)
