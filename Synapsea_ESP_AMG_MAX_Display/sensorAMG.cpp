@@ -8,13 +8,17 @@ void iniciarAMG8833() {
     while (1);
   } else {
     Serial.println("Sensor AMG8833 encontrado no endereco 0x68");
+    Serial.print("AMG offset atual: ");
+    Serial.print(AMG_TEMP_OFFSET, 1);
+    Serial.println(" C");
   }
 }
 
 void lerAMG8833() {
   amg.readPixels(pixels2);
+  // Aplica OFFSET_TEMP (espelhamento/fixo) + AMG_TEMP_OFFSET (calibração ajustável)
   for (int i = 0; i < 64; i++)
-    pixels[i] = pixels2[(((int)(i / 8) * 8) + 7 - (i % 8))] + OFFSET_TEMP;
+    pixels[i] = pixels2[(((int)(i / 8) * 8) + 7 - (i % 8))] + OFFSET_TEMP + AMG_TEMP_OFFSET;
 
   if (MODE_INTERPOLATION == 2) {
     interpolate_image(pixels, AMG_ROWS, AMG_COLS, dest_2d, INTERPOLATED_ROWS, INTERPOLATED_COLS);

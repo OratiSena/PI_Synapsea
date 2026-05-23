@@ -19,6 +19,13 @@
 #define INTERPOLATED_COLS 30
 #define INTERPOLATED_ROWS 30
 #define OFFSET_TEMP 5.0
+
+// Calibração do AMG8833: ajuste fino experimental.
+// O AMG8833 mede temperatura superficial por infravermelho e pode apresentar variação
+// conforme distância, ambiente e emissividade. O offset permite ajuste fino experimental.
+// Altere AMG_TEMP_OFFSET para calibrar: ex. 0.0, +1.0, +1.5, +2.0, -1.0
+#define AMG_TEMP_OFFSET 0.0f
+
 #define MODE_INTERPOLATION 2
 #define MINTEMP 10
 #define MAXTEMP 39
@@ -160,6 +167,7 @@ extern bool mostrarPainelConfig;   // true = painel de config sobreposto
 extern bool tempUnitCelsius;       // true=°C  false=°F
 extern int  ppgZoom;               // 1-5, zoom da onda PPG (padrão=2)
 extern bool amgFrozen;             // true = imagem térmica congelada (tap)
+extern bool  amgCacheReset;        // true = força redesenho dos números na próxima atualização
 extern bool  amgAutoScale;         // true = escala automática suavizada  false = fixo 22–38°C
 extern float escalaMin;            // mínimo atual da escala de cores
 extern float escalaMax;            // máximo atual da escala de cores

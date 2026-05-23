@@ -27,6 +27,7 @@ bool mostrarPainelConfig = false;
 bool tempUnitCelsius     = true;
 int  ppgZoom             = 2;
 bool  amgFrozen     = false;   // true = imagem térmica congelada (tap)
+bool  amgCacheReset = false;   // true = força redesenho dos números na próxima atualização
 bool  amgAutoScale  = true;    // true = auto-scale EMA  false = fixo 22–38°C
 float escalaMin     = 22.0f;   // mínimo atual da escala de cores
 float escalaMax     = 38.0f;   // máximo atual da escala de cores
@@ -187,7 +188,7 @@ void loop() {
     prevDedo_d = false; prevMaxOK_d = false;
     switch (telaAtual) {
       case 0: desenharTelaHome();        break;
-      case 1: desenharTelaTemperatura(); break;
+      case 1: desenharTelaTemperatura(); amgCacheReset = true; break;
       case 2: desenharTelaHeart();       break;
       case 3: desenharTelaPulse();       break;
       case 4: desenharTelaAnalysis();    break;
@@ -208,92 +209,137 @@ void loop() {
     if (bgMax > 0.5f) pix_max = bgMax;
   }
 
-  // ── Leitura e renderização do AMG8833 (somente na tela de temperatura) ──
+  // ── AMG8833 — tela de temperatura (timer 120 ms, sem delay) ─────────────
   if (telaAtual == 1) {
-    if (!amgFrozen) {
-      pix_max = 0;     // reset antes da leitura para drawpixels achar o novo max
-      lerAMG8833();
+    const unsigned long AMG_INTERVAL = 120;
+    static unsigned long lastAMGUpdate = 0;
+    static float lastTempMax   = -999.0f;
+    static float lastTempMin   = -999.0f;
+    static float lastEscalaMin = -999.0f;
+    static float lastEscalaMax = -999.0f;
+    static bool  lastFrozen    = false;
 
-      // Min e Max reais do frame
-      float frameMin = 100.0f;
-      float frameMax =   0.0f;
-      for (int i = 0; i < INTERPOLATED_ROWS * INTERPOLATED_COLS; i++) {
-        if (dest_2d[i] > 0.0f && dest_2d[i] < frameMin) frameMin = dest_2d[i];
-        if (dest_2d[i] > frameMax) frameMax = dest_2d[i];
-      }
-
-      // ── Escala de cores: auto-scale EMA ou fixo 22–38°C ────────────────
-      if (amgAutoScale) {
-        escalaMin = escalaMin * 0.90f + frameMin * 0.10f;
-        escalaMax = escalaMax * 0.90f + frameMax * 0.10f;
-        if (escalaMax - escalaMin < 6.0f) {
-          float centro = (escalaMin + escalaMax) * 0.5f;
-          escalaMin = centro - 3.0f;
-          escalaMax = centro + 3.0f;
-        }
-        escalaMin = constrain(escalaMin, 10.0f, 39.0f);
-        escalaMax = constrain(escalaMax, 16.0f, 45.0f);
-      } else {
-        escalaMin = 22.0f;
-        escalaMax = 38.0f;
-      }
-
-      uint8_t boxW = tft.width() / INTERPOLATED_COLS;  // 8px — largura total 240px
-      uint8_t boxH = 7;                                   // 7px — mapa 210px, libera footer
-      drawpixels(dest_2d, INTERPOLATED_ROWS, INTERPOLATED_COLS, boxW, boxH, false);
-
-      // Mira (crosshair) no ponto mais quente
-      int cx = (int)pos_x + boxW / 2;
-      int cy = (int)pos_y + boxH / 2;
-      tft.drawCircle(cx, cy, 5, 0xFFFF);
-      tft.drawLine(cx - 7, cy, cx - 5, cy, 0xFFFF);
-      tft.drawLine(cx + 5, cy, cx + 7, cy, 0xFFFF);
-      tft.drawLine(cx, cy - 7, cx, cy - 5, 0xFFFF);
-      tft.drawLine(cx, cy + 5, cx, cy + 7, 0xFFFF);
-
-      // ── Overlay: card MAX/MIN (canto sup-dir do mapa) ───────────────
-      tft.fillRoundRect(152, 23, 86, 56, 5, 0x0841);
-      tft.drawRoundRect(152, 23, 86, 56, 5, 0x2104);
-      tft.setTextColor(0x4208); tft.setTextSize(1);
-      tft.setCursor(159, 28); tft.print("MAX");
-      { float v = tempUnitCelsius ? pix_max : (pix_max * 9.0f/5.0f + 32.0f);
-        tft.setTextColor(0xF800);
-        tft.setCursor(159, 37); tft.print(v, 1); tft.print(tempUnitCelsius ? "C" : "F"); }
-      tft.drawLine(160, 52, 231, 52, 0x2104);
-      tft.setTextColor(0x4208);
-      tft.setCursor(159, 55); tft.print("MIN");
-      { float v = tempUnitCelsius ? frameMin : (frameMin * 9.0f/5.0f + 32.0f);
-        tft.setTextColor(0x07FF);
-        tft.setCursor(159, 64); tft.print(v, 1); tft.print(tempUnitCelsius ? "C" : "F"); }
-
-      // ── Temperatura principal no footer (atualiza a cada frame) ──────────
-      { char tvBuf[16];
-        float tv = tempUnitCelsius ? pix_max : (pix_max * 9.0f/5.0f + 32.0f);
-        snprintf(tvBuf, sizeof(tvBuf), "MAX: %.2f %c", tv, tempUnitCelsius ? 'C' : 'F');
-        tft.fillRect(0, 232, 218, 18, 0x0000);
-        tft.setTextColor(0xFFFF); tft.setTextSize(2);
-        tft.setCursor(2, 233); tft.print(tvBuf); }
-
-      // ── Labels da colorbar (escala dinâmica, a cada frame) ─────────────
-      tft.fillRect(0, 272, 240, 10, 0x0000);
-      tft.setTextColor(0xFFFF); tft.setTextSize(1);
-      { float lMin = tempUnitCelsius ? escalaMin : (escalaMin * 9.0f/5.0f + 32.0f);
-        float lMax = tempUnitCelsius ? escalaMax : (escalaMax * 9.0f/5.0f + 32.0f);
-        tft.setCursor(2,   273); tft.print(lMin, 0); tft.print("C");
-        tft.setCursor(214, 273); tft.print(lMax, 0); tft.print("C"); }
-
-    } else {
-      // ── Imagem congelada: badge substitui a temperatura principal ─────
-      tft.fillRect(0, 232, 240, 18, 0x3000);
-      tft.setTextColor(0xFD20); tft.setTextSize(2);
-      tft.setCursor(4, 233); tft.print("|| PAUSED");
+    // Ao (re)entrar na tela, invalida cache para forçar redesenho completo
+    if (amgCacheReset) {
+      amgCacheReset = false;
+      lastTempMax = lastTempMin = lastEscalaMin = lastEscalaMax = -999.0f;
+      lastFrozen  = !amgFrozen;   // garante que o badge PAUSED seja redesenhado se necessário
+      lastAMGUpdate = 0;          // força primeira atualização imediata
     }
 
-    // pix_max NÃO é resetado aqui: persiste para Home e Summary
+    if (!amgFrozen) {
+      // Apaga badge PAUSED ao descongelar (só uma vez)
+      if (lastFrozen) {
+        tft.fillRect(0, 232, 240, 18, 0x0000);
+        lastFrozen  = false;
+        lastTempMax = lastTempMin = -999.0f;  // força redesenho dos números
+      }
 
-    // Touch verificado novamente após render (drawpixels bloqueia ~150ms)
+      if (millis() - lastAMGUpdate >= AMG_INTERVAL) {
+        lastAMGUpdate = millis();
+
+        pix_max = 0;
+        lerAMG8833();
+
+        // Min e Max reais do frame
+        float frameMin = 100.0f, frameMax = 0.0f;
+        for (int i = 0; i < INTERPOLATED_ROWS * INTERPOLATED_COLS; i++) {
+          float v = dest_2d[i];
+          if (v > 0.0f && v < frameMin) frameMin = v;
+          if (v > frameMax) frameMax = v;
+        }
+
+        // Escala EMA ou fixa
+        if (amgAutoScale) {
+          escalaMin = escalaMin * 0.90f + frameMin * 0.10f;
+          escalaMax = escalaMax * 0.90f + frameMax * 0.10f;
+          if (escalaMax - escalaMin < 6.0f) {
+            float c = (escalaMin + escalaMax) * 0.5f;
+            escalaMin = c - 3.0f;  escalaMax = c + 3.0f;
+          }
+          escalaMin = constrain(escalaMin, 10.0f, 39.0f);
+          escalaMax = constrain(escalaMax, 16.0f, 45.0f);
+        } else {
+          escalaMin = 22.0f;  escalaMax = 38.0f;
+        }
+
+        // Heatmap
+        uint8_t boxW = tft.width() / INTERPOLATED_COLS;  // 8px
+        uint8_t boxH = 7;
+        drawpixels(dest_2d, INTERPOLATED_ROWS, INTERPOLATED_COLS, boxW, boxH, false);
+
+        // Mira no ponto mais quente — linhas verticais clampadas ao mapa
+        int cx = (int)pos_x + boxW / 2;
+        int cy = (int)pos_y + boxH / 2;
+        // Limites verticais do heatmap: y=20 até y=(20 + rows*boxH - 1)
+        const int MY0 = 20;
+        const int MY1 = MY0 + INTERPOLATED_ROWS * boxH - 1;
+        // Linhas horizontais (y fixo = cy, sempre dentro do mapa)
+        tft.drawLine(cx - 7, cy, cx - 5, cy, 0xFFFF);
+        tft.drawLine(cx + 5, cy, cx + 7, cy, 0xFFFF);
+        // Linhas verticais clampadas para não vazar em header/footer
+        tft.drawLine(cx, constrain(cy - 7, MY0, MY1), cx, constrain(cy - 5, MY0, MY1), 0xFFFF);
+        tft.drawLine(cx, constrain(cy + 5, MY0, MY1), cx, constrain(cy + 7, MY0, MY1), 0xFFFF);
+        // Círculo só se couber inteiro dentro do mapa (raio=5)
+        if (cy - 5 >= MY0 && cy + 5 <= MY1) {
+          tft.drawCircle(cx, cy, 5, 0xFFFF);
+        }
+
+        // Card MAX/MIN — diferencial: só redesenha se valor mudou >= 0.2
+        float vMax = tempUnitCelsius ? pix_max  : (pix_max  * 9.0f/5.0f + 32.0f);
+        float vMin = tempUnitCelsius ? frameMin : (frameMin * 9.0f/5.0f + 32.0f);
+        bool cardMaxChanged = fabsf(pix_max  - lastTempMax) >= 0.2f;
+        bool cardMinChanged = fabsf(frameMin - lastTempMin) >= 0.2f;
+        if (cardMaxChanged || cardMinChanged) {
+          if (cardMaxChanged) lastTempMax = pix_max;
+          if (cardMinChanged) lastTempMin = frameMin;
+          // Redesenha o card inteiro (skeleton + valores) de uma só vez
+          tft.fillRoundRect(152, 23, 86, 56, 5, 0x0841);
+          tft.drawRoundRect(152, 23, 86, 56, 5, 0x4208);
+          tft.drawLine(154, 51, 234, 51, 0x2104);
+          tft.setTextSize(1);
+          tft.setTextColor(0xF800);
+          tft.setCursor(159, 28); tft.print("MAX");
+          tft.setCursor(159, 37); tft.print(vMax, 1); tft.print(tempUnitCelsius ? "C" : "F");
+          tft.setTextColor(0x07FF);
+          tft.setCursor(159, 55); tft.print("MIN");
+          tft.setCursor(159, 64); tft.print(vMin, 1); tft.print(tempUnitCelsius ? "C" : "F");
+        }
+
+        // Footer temperatura — diferencial
+        if (cardMaxChanged) {
+          char tvBuf[16];
+          snprintf(tvBuf, sizeof(tvBuf), "MAX: %.2f %c", vMax, tempUnitCelsius ? 'C' : 'F');
+          tft.fillRect(0, 232, 240, 18, 0x0000);
+          tft.setTextColor(0xFFFF); tft.setTextSize(2);
+          tft.setCursor(2, 233); tft.print(tvBuf);
+        }
+
+        // Colorbar + labels — só redesenha se escala mudou >= 0.2
+        if (fabsf(escalaMin - lastEscalaMin) >= 0.2f || fabsf(escalaMax - lastEscalaMax) >= 0.2f) {
+          lastEscalaMin = escalaMin;  lastEscalaMax = escalaMax;
+          colorbar();
+          tft.fillRect(0, 270, 240, 12, 0x0000);
+          tft.setTextColor(0xFFFF); tft.setTextSize(1);
+          float lMin = tempUnitCelsius ? escalaMin : (escalaMin * 9.0f/5.0f + 32.0f);
+          float lMax = tempUnitCelsius ? escalaMax : (escalaMax * 9.0f/5.0f + 32.0f);
+          tft.setCursor(2,   273); tft.print(lMin, 0); tft.print("C");
+          tft.setCursor(214, 273); tft.print(lMax, 0); tft.print("C");
+        }
+      }  // fim if millis
+
+    } else {
+      // Imagem congelada — badge desenhado só uma vez ao congelar
+      if (!lastFrozen) {
+        lastFrozen = true;
+        tft.fillRect(0, 232, 240, 18, 0x3000);
+        tft.setTextColor(0xFD20); tft.setTextSize(2);
+        tft.setCursor(4, 233); tft.print("|| PAUSED");
+      }
+    }
+
+    // pix_max persiste para Home e Summary
     verificarTouch();
-    delay(30);
     return;
   }
 

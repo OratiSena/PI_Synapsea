@@ -123,11 +123,13 @@ void drawpixels(float *p, uint8_t rows, uint8_t cols, uint8_t boxW, uint8_t boxH
       float val = get_point(p, rows, cols, x, y);
       int idx = (int)((val - escalaMin) * 239.0f / (escalaMax - escalaMin));
       idx = constrain(idx, 0, 239);
-      tft.fillRect(x * boxW, y * boxH + 20, boxW, boxH, camColors[idx]);
+      int px = x * boxW;
+      int py = y * boxH + 20;
+      tft.fillRect(px, py, boxW, boxH, camColors[idx]);
       if (val > pix_max) {
         pix_max = val;
-        pos_x   = x * boxW;
-        pos_y   = y * boxH + 20;
+        pos_x   = px;
+        pos_y   = py;
       }
       if (showVal) {
         tft.setCursor(x * boxW + boxW / 2 - 12, y * boxH + 44 + boxH / 2 + 4);
@@ -273,6 +275,15 @@ void desenharTelaTemperatura() {
   tft.setCursor(62, 6); tft.print("|");
   tft.setTextColor(COR_BRANCO); tft.setTextSize(1);
   tft.setCursor(70, 6); tft.print("Temperature");
+
+  // ── Card MAX/MIN (canto sup-dir, x=152 y=23, 86×56 px) ────────────────
+  tft.fillRoundRect(152, 23, 86, 56, 5, 0x0841);
+  tft.drawRoundRect(152, 23, 86, 56, 5, 0x4208);
+  tft.drawLine(154, 51, 234, 51, 0x2104);
+  tft.setTextColor(0xF800); tft.setTextSize(1);
+  tft.setCursor(159, 28); tft.print("MAX");
+  tft.setTextColor(0x07FF);
+  tft.setCursor(159, 55); tft.print("MIN");
 
   // ── Rodapé fixo (desenhado uma vez na inicialização) ──────────────────
   colorbar();   // gradiente y=252..269
