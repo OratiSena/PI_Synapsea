@@ -109,35 +109,28 @@ void desenharStatus(int x, int y, int w, int h, const char* texto, uint16_t corF
 // ══════════════════════════════════════════════════════════════════════════
 
 void colorbar() {
-  // barra de cores abaixo da imagem térmica (y=277, imagem termina em y=276)
-  tft.fillRect(0, 277, 240, 26, COR_FUNDO);
+  // barra de cores abaixo da temperatura (y=252)
   for (int i = 0; i < 240; i++) {
     int colorIndex = constrain((int)(i * 1.05), 0, maxIndex);
-    tft.fillRect(i, 277, 1, 26, camColors[colorIndex]);
+    tft.fillRect(i, 252, 1, 18, camColors[colorIndex]);
   }
-  tft.setTextColor(COR_BRANCO);
-  tft.setTextSize(1);
-  tft.setCursor(2, 281);
-  tft.print(MINTEMP); tft.print("C");
-  tft.setCursor(210, 281);
-  tft.print(MAXTEMP); tft.print("C");
 }
 
 void drawpixels(float *p, uint8_t rows, uint8_t cols, uint8_t boxW, uint8_t boxH, boolean showVal) {
-  // offsetY = 36 para caber abaixo do cabeçalho da tela de temperatura
+  // offsetY = 20: mapa começa logo abaixo do cabeçalho fino
   for (int y = 0; y < rows; y++) {
     for (int x = 0; x < cols; x++) {
       float val = get_point(p, rows, cols, x, y);
       int idx = map(val, MINTEMP, MAXTEMP, 0, 239);
       idx = constrain(idx, 0, 239);
-      tft.fillRect(x * boxW, y * boxH + 36, boxW, boxH, camColors[idx]);
+      tft.fillRect(x * boxW, y * boxH + 20, boxW, boxH, camColors[idx]);
       if (val > pix_max) {
         pix_max = val;
         pos_x   = x * boxW;
-        pos_y   = y * boxH + 36;
+        pos_y   = y * boxH + 20;
       }
       if (showVal) {
-        tft.setCursor(x * boxW + boxW / 2 - 12, y * boxH + 36 + boxH / 2 + 4);
+        tft.setCursor(x * boxW + boxW / 2 - 12, y * boxH + 44 + boxH / 2 + 4);
         tft.setTextColor(COR_BRANCO);
         tft.setTextSize(1);
         tft.print(val, 1);
@@ -271,20 +264,24 @@ void atualizarTelaHome() {
 
 void desenharTelaTemperatura() {
   tft.fillScreen(COR_FUNDO);
-  desenharCabecalho("Temperature", COR_CIANO);
-  // Ícone termômetro no cabeçalho (direita)
-  tft.fillCircle(228, 24, 6, COR_VERMELHO);
-  tft.fillRect(225, 8, 6, 18, COR_VERMELHO);
 
-  // Label rodapé
-  tft.setTextColor(COR_CINZA);
-  tft.setTextSize(1);
-  tft.setCursor(4, 306);
-  tft.print("AMG8833  8x8");
+  // ── Cabeçalho fino (y 0..19) ──────────────────────────────────────────
+  tft.fillRect(0, 0, 240, 20, COR_CARD);
+  tft.setTextColor(COR_CIANO);  tft.setTextSize(1);
+  tft.setCursor(6, 6);  tft.print("Synapsea");
+  tft.setTextColor(COR_CINZA);  tft.setTextSize(1);
+  tft.setCursor(62, 6); tft.print("|");
+  tft.setTextColor(COR_BRANCO); tft.setTextSize(1);
+  tft.setCursor(70, 6); tft.print("Temperature");
 
-  colorbar();
+  // ── Rodapé fixo (desenhado uma vez na inicialização) ──────────────────
+  colorbar();   // gradiente y=252..269
+  // Labels de temperatura
+  tft.setTextColor(COR_BRANCO); tft.setTextSize(1);
+  tft.setCursor(2,   272); tft.print(MINTEMP); tft.print("C");
+  tft.setCursor(214, 272); tft.print(MAXTEMP); tft.print("C");
+  // Indicador de página
   desenharIndicadorPagina(1, 6);
-  // Overlay MAX/MIN é redesenhado pelo loop a cada frame
 }
 
 // ══════════════════════════════════════════════════════════════════════════

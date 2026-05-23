@@ -217,39 +217,47 @@ void loop() {
         if (dest_2d[i] > 0.0f && dest_2d[i] < frameMin) frameMin = dest_2d[i];
       }
 
-      uint16_t boxSize = min(tft.width() / INTERPOLATED_COLS, 240 / INTERPOLATED_ROWS);
-      drawpixels(dest_2d, INTERPOLATED_ROWS, INTERPOLATED_COLS, boxSize, boxSize, false);
+      uint8_t boxW = tft.width() / INTERPOLATED_COLS;  // 8px — largura total 240px
+      uint8_t boxH = 7;                                   // 7px — mapa 210px, libera footer
+      drawpixels(dest_2d, INTERPOLATED_ROWS, INTERPOLATED_COLS, boxW, boxH, false);
 
       // Mira (crosshair) no ponto mais quente
-      int cx = (int)pos_x + boxSize / 2;
-      int cy = (int)pos_y + boxSize / 2;
+      int cx = (int)pos_x + boxW / 2;
+      int cy = (int)pos_y + boxH / 2;
       tft.drawCircle(cx, cy, 5, 0xFFFF);
       tft.drawLine(cx - 7, cy, cx - 5, cy, 0xFFFF);
       tft.drawLine(cx + 5, cy, cx + 7, cy, 0xFFFF);
       tft.drawLine(cx, cy - 7, cx, cy - 5, 0xFFFF);
       tft.drawLine(cx, cy + 5, cx, cy + 7, 0xFFFF);
 
-      // Overlay MAX/MIN redesenhado sobre a imagem a cada frame
-      tft.fillRect(152, 36, 88, 60, 0x0841);
-      tft.drawRect(152, 36, 88, 60, 0x2104);
+      // ── Overlay: card MAX/MIN (canto sup-dir do mapa) ───────────────
+      tft.fillRoundRect(152, 23, 86, 56, 5, 0x0841);
+      tft.drawRoundRect(152, 23, 86, 56, 5, 0x2104);
       tft.setTextColor(0x4208); tft.setTextSize(1);
-      tft.setCursor(158, 40); tft.print("MAX:");
-      tft.setCursor(158, 64); tft.print("MIN:");
-      tft.setTextColor(0xF800);
+      tft.setCursor(159, 28); tft.print("MAX");
       { float v = tempUnitCelsius ? pix_max : (pix_max * 9.0f/5.0f + 32.0f);
-        tft.setCursor(158, 51); tft.print(v, 1); tft.print(tempUnitCelsius ? "C" : "F"); }
-      tft.setTextColor(0x07FF);
+        tft.setTextColor(0xF800);
+        tft.setCursor(159, 37); tft.print(v, 1); tft.print(tempUnitCelsius ? "C" : "F"); }
+      tft.drawLine(160, 52, 231, 52, 0x2104);
+      tft.setTextColor(0x4208);
+      tft.setCursor(159, 55); tft.print("MIN");
       { float v = tempUnitCelsius ? frameMin : (frameMin * 9.0f/5.0f + 32.0f);
-        tft.setCursor(158, 75); tft.print(v, 1); tft.print(tempUnitCelsius ? "C" : "F"); }
+        tft.setTextColor(0x07FF);
+        tft.setCursor(159, 64); tft.print(v, 1); tft.print(tempUnitCelsius ? "C" : "F"); }
 
-      // Apaga indicador PAUSED quando não está congelado
-      tft.fillRect(4, 292, 86, 13, 0x0000);  // COR_FUNDO
+      // ── Temperatura principal no footer (atualiza a cada frame) ──────────
+      { char tvBuf[16];
+        float tv = tempUnitCelsius ? pix_max : (pix_max * 9.0f/5.0f + 32.0f);
+        snprintf(tvBuf, sizeof(tvBuf), "MAX: %.2f %c", tv, tempUnitCelsius ? 'C' : 'F');
+        tft.fillRect(0, 232, 218, 18, 0x0000);
+        tft.setTextColor(0xFFFF); tft.setTextSize(2);
+        tft.setCursor(2, 233); tft.print(tvBuf); }
 
     } else {
-      // ── Imagem congelada: só desenha badge ──────────────────────────
-      tft.fillRect(4, 292, 86, 13, 0x3000);
-      tft.setTextColor(0xFD20); tft.setTextSize(1);
-      tft.setCursor(6, 294); tft.print("|| PAUSED  Toque p/ retomar");
+      // ── Imagem congelada: badge substitui a temperatura principal ─────
+      tft.fillRect(0, 232, 240, 18, 0x3000);
+      tft.setTextColor(0xFD20); tft.setTextSize(2);
+      tft.setCursor(4, 233); tft.print("|| PAUSED");
     }
 
     // pix_max NÃO é resetado aqui: persiste para Home e Summary
