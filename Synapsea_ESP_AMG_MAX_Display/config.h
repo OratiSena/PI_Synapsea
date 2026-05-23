@@ -160,3 +160,6 @@ extern bool mostrarPainelConfig;   // true = painel de config sobreposto
 extern bool tempUnitCelsius;       // true=°C  false=°F
 extern int  ppgZoom;               // 1-5, zoom da onda PPG (padrão=2)
 extern bool amgFrozen;             // true = imagem térmica congelada (tap)
+extern bool  amgAutoScale;         // true = escala automática suavizada  false = fixo 22–38°C
+extern float escalaMin;            // mínimo atual da escala de cores
+extern float escalaMax;            // máximo atual da escala de cores

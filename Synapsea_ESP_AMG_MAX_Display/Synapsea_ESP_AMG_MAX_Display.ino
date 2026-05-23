@@ -26,7 +26,10 @@ XPT2046_Touchscreen ts(T_CS, T_IRQ);
 bool mostrarPainelConfig = false;
 bool tempUnitCelsius     = true;
 int  ppgZoom             = 2;
-bool amgFrozen           = false;   // true = imagem térmica congelada (tap)
+bool  amgFrozen     = false;   // true = imagem térmica congelada (tap)
+bool  amgAutoScale  = true;    // true = auto-scale EMA  false = fixo 22–38°C
+float escalaMin     = 22.0f;   // mínimo atual da escala de cores
+float escalaMax     = 38.0f;   // máximo atual da escala de cores
 
 // ─── Variáveis do sensor AMG8833 ──────────────────────────────────────────
 float pixels[AMG_COLS * AMG_ROWS];
@@ -211,10 +214,28 @@ void loop() {
       pix_max = 0;     // reset antes da leitura para drawpixels achar o novo max
       lerAMG8833();
 
-      // Temperatura mínima do frame
+      // Min e Max reais do frame
       float frameMin = 100.0f;
+      float frameMax =   0.0f;
       for (int i = 0; i < INTERPOLATED_ROWS * INTERPOLATED_COLS; i++) {
         if (dest_2d[i] > 0.0f && dest_2d[i] < frameMin) frameMin = dest_2d[i];
+        if (dest_2d[i] > frameMax) frameMax = dest_2d[i];
+      }
+
+      // ── Escala de cores: auto-scale EMA ou fixo 22–38°C ────────────────
+      if (amgAutoScale) {
+        escalaMin = escalaMin * 0.90f + frameMin * 0.10f;
+        escalaMax = escalaMax * 0.90f + frameMax * 0.10f;
+        if (escalaMax - escalaMin < 6.0f) {
+          float centro = (escalaMin + escalaMax) * 0.5f;
+          escalaMin = centro - 3.0f;
+          escalaMax = centro + 3.0f;
+        }
+        escalaMin = constrain(escalaMin, 10.0f, 39.0f);
+        escalaMax = constrain(escalaMax, 16.0f, 45.0f);
+      } else {
+        escalaMin = 22.0f;
+        escalaMax = 38.0f;
       }
 
       uint8_t boxW = tft.width() / INTERPOLATED_COLS;  // 8px — largura total 240px
@@ -252,6 +273,14 @@ void loop() {
         tft.fillRect(0, 232, 218, 18, 0x0000);
         tft.setTextColor(0xFFFF); tft.setTextSize(2);
         tft.setCursor(2, 233); tft.print(tvBuf); }
+
+      // ── Labels da colorbar (escala dinâmica, a cada frame) ─────────────
+      tft.fillRect(0, 272, 240, 10, 0x0000);
+      tft.setTextColor(0xFFFF); tft.setTextSize(1);
+      { float lMin = tempUnitCelsius ? escalaMin : (escalaMin * 9.0f/5.0f + 32.0f);
+        float lMax = tempUnitCelsius ? escalaMax : (escalaMax * 9.0f/5.0f + 32.0f);
+        tft.setCursor(2,   273); tft.print(lMin, 0); tft.print("C");
+        tft.setCursor(214, 273); tft.print(lMax, 0); tft.print("C"); }
 
     } else {
       // ── Imagem congelada: badge substitui a temperatura principal ─────

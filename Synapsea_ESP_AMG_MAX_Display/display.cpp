@@ -121,7 +121,7 @@ void drawpixels(float *p, uint8_t rows, uint8_t cols, uint8_t boxW, uint8_t boxH
   for (int y = 0; y < rows; y++) {
     for (int x = 0; x < cols; x++) {
       float val = get_point(p, rows, cols, x, y);
-      int idx = map(val, MINTEMP, MAXTEMP, 0, 239);
+      int idx = (int)((val - escalaMin) * 239.0f / (escalaMax - escalaMin));
       idx = constrain(idx, 0, 239);
       tft.fillRect(x * boxW, y * boxH + 20, boxW, boxH, camColors[idx]);
       if (val > pix_max) {
@@ -276,10 +276,10 @@ void desenharTelaTemperatura() {
 
   // ── Rodapé fixo (desenhado uma vez na inicialização) ──────────────────
   colorbar();   // gradiente y=252..269
-  // Labels de temperatura
+  // Labels iniciais (atualizados a cada frame pelo loop)
   tft.setTextColor(COR_BRANCO); tft.setTextSize(1);
-  tft.setCursor(2,   272); tft.print(MINTEMP); tft.print("C");
-  tft.setCursor(214, 272); tft.print(MAXTEMP); tft.print("C");
+  tft.setCursor(2,   272); tft.print(escalaMin, 0); tft.print("C");
+  tft.setCursor(214, 272); tft.print(escalaMax, 0); tft.print("C");
   // Indicador de página
   desenharIndicadorPagina(1, 6);
 }
