@@ -4,7 +4,7 @@ bool amgDisponivel = false;
 
 void iniciarAMG8833() {
 
-  amgDisponivel = amg.begin(0x69);
+  amgDisponivel = amg.begin(0x68);
 
   if (!amgDisponivel) {
 
@@ -25,6 +25,7 @@ void iniciarAMG8833() {
   Serial.println(" C");
 }
 
+
 void lerAMG8833() {
 
   if (!amgDisponivel) {
@@ -40,6 +41,7 @@ void lerAMG8833() {
   amg.readPixels(pixels2);
 
   for (int i = 0; i < 64; i++) {
+
     pixels[i] =
       pixels2[(((int)(i / 8) * 8) + 7 - (i % 8))]
       + OFFSET_TEMP
@@ -47,6 +49,7 @@ void lerAMG8833() {
   }
 
   if (MODE_INTERPOLATION == 2) {
+
     interpolate_image(
       pixels,
       AMG_ROWS,
@@ -55,8 +58,9 @@ void lerAMG8833() {
       INTERPOLATED_ROWS,
       INTERPOLATED_COLS
     );
-  }
-  else if (MODE_INTERPOLATION == 1) {
+
+  } else if (MODE_INTERPOLATION == 1) {
+
     interpolate_linear_image(
       pixels,
       AMG_ROWS,
@@ -65,6 +69,20 @@ void lerAMG8833() {
       INTERPOLATED_ROWS,
       INTERPOLATED_COLS
     );
+
+  } else {
+
+    for (int i = 0; i < 64; i++) {
+      dest_2d[i] = pixels[i];
+    }
+  }
+
+  // DEBUG
+  for (int i = 0; i < 10; i++) {
+    Serial.print("dest[");
+    Serial.print(i);
+    Serial.print("] = ");
+    Serial.println(dest_2d[i]);
   }
 }
 // ─── Funções de interpolação e utilitários ────────────────────────────────
