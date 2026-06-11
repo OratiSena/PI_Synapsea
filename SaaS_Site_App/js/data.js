@@ -40,7 +40,8 @@
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 4500);
     try {
-      const response = await fetch(`${API_CONFIG.baseUrl}${path}`, {
+      const requestFn = window.authFetch || window.fetch.bind(window);
+      const response = await requestFn(`${API_CONFIG.baseUrl}${path}`, {
         ...options,
         headers: {
           Accept: "application/json",
@@ -72,6 +73,9 @@
   const getPatients = () => request("/patients", {}, []);
   const getReports = () => request("/reports", {}, []);
   const getSystemStatus = () => request("/system/status", {}, null);
+  const getLatestInsight = () => request("/insights/latest", {}, null);
+  const getDeviceAssignments = () => request("/devices/assignments", {}, []);
+  const getUsers = () => request("/auth/users", {}, []);
 
   const updateAlertReadStatus = (alertId) => request(`/alerts/${encodeURIComponent(alertId)}/read`, {
     method: "PATCH",
@@ -86,6 +90,16 @@
   const createReport = (reportData) => request("/reports", {
     method: "POST",
     body: JSON.stringify(reportData)
+  }, null);
+
+  const generateReport = (reportData) => request("/reports/generate", {
+    method: "POST",
+    body: JSON.stringify(reportData)
+  }, null);
+
+  const assignDevice = (deviceId, assignment) => request(`/devices/${encodeURIComponent(deviceId)}/assign`, {
+    method: "POST",
+    body: JSON.stringify(assignment)
   }, null);
 
   const updateSettings = (settings) => request("/settings", {
@@ -137,9 +151,14 @@
     getPatients,
     getReports,
     getSystemStatus,
+    getLatestInsight,
+    getDeviceAssignments,
+    getUsers,
     updateAlertReadStatus,
     createPatient,
     createReport,
+    generateReport,
+    assignDevice,
     updateSettings,
     connectRealtime,
     disconnectRealtime,
@@ -157,9 +176,14 @@
     getPatients,
     getReports,
     getSystemStatus,
+    getLatestInsight,
+    getDeviceAssignments,
+    getUsers,
     updateAlertReadStatus,
     createPatient,
     createReport,
+    generateReport,
+    assignDevice,
     updateSettings,
     connectRealtime,
     disconnectRealtime,

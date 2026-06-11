@@ -23,6 +23,10 @@
   gap: 14px;
 }
 
+.admin-users-card {
+  margin-top: 18px;
+}
+
 @media (max-width: 620px) {
   .patients-toolbar {
     align-items: stretch;

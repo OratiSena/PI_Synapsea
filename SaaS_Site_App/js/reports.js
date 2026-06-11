@@ -3,11 +3,7 @@
   let reports = [];
 
   function exportReport(report) {
-    const payload = {
-      ...report,
-      disclaimer: "Relatório de apoio educacional. Não substitui equipamento ou avaliação médica profissional."
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -16,21 +12,28 @@
     URL.revokeObjectURL(url);
   }
 
+  function metricsHtml(content) {
+    const metrics = content?.metrics || {};
+    return `<div class="report-metrics">
+      <span>BPM médio <strong>${escapeHtml(formatValue(metrics.avgBpm, 1))}</strong></span>
+      <span>SpO₂ média <strong>${escapeHtml(formatValue(metrics.avgSpo2, 1))}</strong></span>
+      <span>Temperatura média <strong>${escapeHtml(formatValue(metrics.avgTemperature, 1))}</strong></span>
+      <span>Alertas <strong>${escapeHtml(metrics.alertsCount ?? "--")}</strong></span>
+    </div>`;
+  }
+
   function renderReports() {
     const container = document.getElementById("reports-grid");
-    if (!reports.length) {
-      showEmptyState(container, "Nenhum relatório disponível.");
-      return;
-    }
+    if (!reports.length) return showEmptyState(container, "Nenhum relatório disponível.");
     container.innerHTML = `<div class="reports-grid">${reports.map((report) => `
       <article class="card report-card">
         <span class="report-icon">R</span>
         <h3>${escapeHtml(report.title || "Relatório educacional")}</h3>
-        <p>Relatório de apoio educacional. Não apresenta diagnóstico médico.</p>
+        <p>${escapeHtml(report.content?.summary || "Relatório de apoio educacional.")}</p>
+        ${metricsHtml(report.content)}
         <div class="report-meta">
-          <span>Tipo: ${escapeHtml(report.type || "Não informado")}</span>
-          <span>Paciente: ${escapeHtml(report.patientId || report.patient_id || "--")}</span>
-          <span>Criado em: ${escapeHtml(formatDateTime(report.createdAt || report.created_at))}</span>
+          <span>Paciente: ${escapeHtml(report.patientName || report.patientId || "--")}</span>
+          <span>Criado em: ${escapeHtml(formatDateTime(report.createdAt))}</span>
         </div>
         <div class="report-actions"><button class="btn btn-sm" data-export="${escapeHtml(report.id)}">Exportar JSON</button></div>
       </article>`).join("")}</div>`;
@@ -39,34 +42,28 @@
     });
   }
 
-  function toggleModal(open) {
-    document.getElementById("report-modal")?.classList.toggle("open", open);
-  }
-
   async function loadReports() {
     const result = await getReports();
     reports = Array.isArray(result) ? result : [];
     renderReports();
   }
 
-  document.addEventListener("DOMContentLoaded", () => {
+  document.addEventListener("DOMContentLoaded", async () => {
     showLoading("reports-grid");
+    const patients = await getPatients();
+    const select = document.getElementById("report-patient");
+    if (select) select.innerHTML = (Array.isArray(patients) ? patients : []).map((patient) =>
+      `<option value="${escapeHtml(patient.id)}">${escapeHtml(patient.name)}</option>`
+    ).join("");
     loadReports();
-    document.getElementById("open-report-modal")?.addEventListener("click", () => toggleModal(true));
-    document.querySelectorAll("[data-close-report-modal]").forEach((button) => button.addEventListener("click", () => toggleModal(false)));
+    document.getElementById("open-report-modal")?.addEventListener("click", () => document.getElementById("report-modal").classList.add("open"));
+    document.querySelectorAll("[data-close-report-modal]").forEach((button) => button.addEventListener("click", () => document.getElementById("report-modal").classList.remove("open")));
     document.getElementById("report-form")?.addEventListener("submit", async (event) => {
       event.preventDefault();
-      const payload = Object.fromEntries(new FormData(event.currentTarget));
-      payload.content = { note: payload.note, educationalOnly: true };
-      delete payload.note;
-      const result = await createReport(payload);
-      if (!result) {
-        showToast("Relatório não criado. Verifique a conexão com a API.", "error");
-        return;
-      }
-      event.currentTarget.reset();
-      toggleModal(false);
-      showToast("Solicitação de relatório enviada.");
+      const result = await generateReport(Object.fromEntries(new FormData(event.currentTarget)));
+      if (!result) return showToast("Relatório não gerado. Verifique os dados e a API.", "error");
+      document.getElementById("report-modal").classList.remove("open");
+      showToast("Relatório educacional gerado.");
       loadReports();
     });
   });

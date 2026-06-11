@@ -20,6 +20,8 @@
             <p>${escapeHtml(alert.description || "Sem descrição.")}</p>
             <div class="alert-meta">
               <span class="badge badge-${getStatusColor(type)}">${escapeHtml(getAlertTypeLabel(type))}</span>
+              <span>Paciente: ${escapeHtml(alert.patientName || "Não informado")}</span>
+              <span>Dispositivo: ${escapeHtml(alert.deviceName || "Não informado")}</span>
               <span>${escapeHtml(formatDateTime(alert.timestamp))}</span>
               <span>${alert.read ? "Lido" : "Não lido"}</span>
             </div>

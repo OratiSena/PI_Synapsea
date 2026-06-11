@@ -232,6 +232,10 @@
   display: block;
 }
 
+.logout-button {
+  color: #fca5a5;
+}
+
 .user-copy strong {
   font-size: 0.78rem;
 }
