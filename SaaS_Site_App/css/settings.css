@@ -1,0 +1,54 @@
+.settings-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(260px, 0.65fr);
+  gap: 18px;
+}
+
+.settings-section + .settings-section {
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px solid var(--border);
+}
+
+.settings-section h3 {
+  margin-bottom: 4px;
+  font-size: 0.9rem;
+}
+
+.settings-section > p {
+  margin-bottom: 16px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.connection-preview {
+  display: grid;
+  gap: 12px;
+}
+
+.connection-row {
+  padding: 13px;
+  background: rgba(255,255,255,.025);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.connection-row span,
+.connection-row strong {
+  display: block;
+}
+
+.connection-row span {
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.connection-row strong {
+  overflow-wrap: anywhere;
+  font-size: 0.76rem;
+}
+
+@media (max-width: 900px) {
+  .settings-layout { grid-template-columns: 1fr; }
+}

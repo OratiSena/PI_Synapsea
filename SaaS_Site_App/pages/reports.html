@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Relatórios | Synapsea</title>
+  <link rel="stylesheet" href="../css/global.css"><link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css"><link rel="stylesheet" href="../css/reports.css">
+</head>
+<body data-page="reports" data-title="Relatórios">
+  <div class="app-shell"><main class="page-main"><div class="page-content">
+    <section class="page-heading"><div><h1>Relatórios educacionais</h1><p>Registros de apoio à observação criados a partir dos dados reais persistidos.</p></div><button class="btn btn-primary" id="open-report-modal" type="button">Novo relatório</button></section>
+    <div class="notice"><strong>i</strong><span>Todo relatório do Synapsea é educacional e não constitui laudo ou diagnóstico médico.</span></div>
+    <div id="reports-grid" style="margin-top:18px"></div>
+  </div></main></div>
+  <div class="modal" id="report-modal" role="dialog" aria-modal="true" aria-labelledby="report-title">
+    <div class="modal-panel">
+      <div class="modal-header"><h2 id="report-title">Solicitar relatório</h2><button class="icon-button" data-close-report-modal type="button">×</button></div>
+      <div class="modal-body">
+        <form id="report-form">
+          <div class="field"><label for="report-name">Título</label><input class="input" id="report-name" name="title" required></div>
+          <div class="form-grid" style="margin-top:16px">
+            <div class="field"><label for="report-patient">ID do paciente</label><input class="input" id="report-patient" name="patientId" required></div>
+            <div class="field"><label for="report-type">Tipo</label><select class="select" id="report-type" name="type"><option value="vitals">Sinais vitais</option><option value="thermal">Temperatura</option><option value="session">Sessão completa</option></select></div>
+          </div>
+          <div class="field" style="margin-top:16px"><label for="report-note">Observação educacional</label><textarea class="textarea" id="report-note" name="note" maxlength="500"></textarea></div>
+          <div class="form-actions"><button class="btn" data-close-report-modal type="button">Cancelar</button><button class="btn btn-primary" type="submit">Enviar para API</button></div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <script src="../js/utils.js"></script><script src="../js/data.js"></script><script src="../js/layout.js"></script><script src="../js/reports.js"></script>
+</body>
+</html>

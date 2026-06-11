@@ -1,0 +1,31 @@
+.patient-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.patient-avatar {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border-radius: 10px;
+  place-items: center;
+  font-size: 0.7rem;
+  font-weight: 850;
+}
+
+.patients-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+@media (max-width: 620px) {
+  .patients-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

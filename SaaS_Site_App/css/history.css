@@ -1,0 +1,30 @@
+.history-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.summary-card {
+  padding: 17px;
+}
+
+.summary-card span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.summary-card strong {
+  font-size: 1.35rem;
+}
+
+.reading-type {
+  color: var(--primary);
+  font-weight: 750;
+}
+
+@media (max-width: 650px) {
+  .history-summary { grid-template-columns: 1fr; }
+}
