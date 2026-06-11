@@ -58,6 +58,10 @@
   }
 
   function buildHeader(title) {
+    const user = window.getCurrentUser?.() || {};
+    const initials = String(user.name || "SY").split(/\s+/).slice(0, 2)
+      .map((part) => part[0]).join("").toUpperCase();
+    const role = user.role === "admin" ? "Administrador" : "Usuario";
     return `
       <header class="topbar">
         <div class="topbar-actions">
@@ -73,9 +77,10 @@
           </div>
           <time class="clock" id="header-clock"></time>
           <div class="user-chip">
-            <span class="avatar">SY</span>
-            <span class="user-copy"><strong>Synapsea</strong><span>Projeto acadêmico</span></span>
+            <span class="avatar">${escapeHtml(initials)}</span>
+            <span class="user-copy"><strong>${escapeHtml(user.name || "Synapsea")}</strong><span>${escapeHtml(role)}</span></span>
           </div>
+          <button class="btn btn-sm logout-button" id="logout-button" type="button">Sair</button>
         </div>
       </header>`;
   }
@@ -135,6 +140,7 @@
     updateClock();
     window.setInterval(updateClock, 30000);
     window.addEventListener("synapsea:api-status", (event) => updateApiIndicator(event.detail.online));
+    document.getElementById("logout-button")?.addEventListener("click", () => window.logout?.());
 
     if (window.getSystemStatus) {
       window.getSystemStatus().then((status) => updateApiIndicator(status ? true : window.SynapseaAPI?.isOnline));

@@ -41,7 +41,7 @@
             <div class="vital-status" id="status-spo2">Aguardando leitura</div>
           </article>
           <article class="card vital-card" style="--metric-color:#a78bfa">
-            <div class="vital-top"><span class="metric-icon">°C</span><span class="badge">Sensor</span></div>
+            <div class="vital-top"><span class="metric-icon">°C</span><span class="badge">AMG8833</span></div>
             <p class="vital-label">Temperatura</p>
             <div class="vital-value-row"><strong class="vital-value" id="metric-temperature">--</strong><span class="vital-unit">°C</span></div>
             <div class="vital-status" id="status-temperature">Aguardando leitura</div>
@@ -98,9 +98,20 @@
             </article>
           </div>
         </section>
+
+        <article class="card insight-card">
+          <div class="card-header">
+            <div><h2>Análise inteligente</h2><p>Apoio educacional baseado em regras e preparado para futura IA local.</p></div>
+            <span class="badge" id="insight-level">Aguardando dados</span>
+          </div>
+          <div class="card-body" id="dashboard-insight">
+            <div class="empty-state"><div class="state-content"><strong class="state-title">Aguardando dados</strong><p class="state-message">A análise será exibida quando houver leituras disponíveis.</p></div></div>
+          </div>
+        </article>
       </div>
     </main>
   </div>
+  <script src="js/session.js"></script>
   <script src="js/utils.js"></script>
   <script src="js/data.js"></script>
   <script src="js/layout.js"></script>

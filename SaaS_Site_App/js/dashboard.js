@@ -64,19 +64,40 @@
       </div>`).join("")}</div>`;
   }
 
+  function renderInsight(insight) {
+    const container = document.getElementById("dashboard-insight");
+    const badge = document.getElementById("insight-level");
+    if (!container || !badge || !insight) return;
+    const color = getStatusColor(insight.level);
+    badge.className = `badge badge-${color}`;
+    badge.textContent = getStatusLabel(insight.level);
+    container.innerHTML = `
+      <div class="insight-content">
+        <span class="insight-mark" aria-hidden="true">IA</span>
+        <div>
+          <h3>${escapeHtml(insight.title || "Análise educacional")}</h3>
+          <p>${escapeHtml(insight.message || "Sem observações no momento.")}</p>
+          <strong>${escapeHtml(insight.recommendation || "")}</strong>
+          <small>${escapeHtml(insight.disclaimer || "")}</small>
+        </div>
+      </div>`;
+  }
+
   async function loadDashboard() {
     const message = document.getElementById("dashboard-api-message");
-    const [vitals, history, alerts, devices] = await Promise.all([
+    const [vitals, history, alerts, devices, insight] = await Promise.all([
       getLatestVitals(),
       getVitalsHistory(),
       getAlerts(),
-      getDevices()
+      getDevices(),
+      getLatestInsight()
     ]);
 
     renderVitals(vitals);
     renderVitalsChart("vitals-chart", history);
     renderAlerts(Array.isArray(alerts) ? alerts : []);
     renderDevices(Array.isArray(devices) ? devices : []);
+    renderInsight(insight);
 
     const hasData = Boolean(vitals) || (history?.length || alerts?.length || devices?.length);
     if (message) {

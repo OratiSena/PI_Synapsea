@@ -8,10 +8,19 @@
 </head>
 <body data-page="devices" data-title="Dispositivos">
   <div class="app-shell"><main class="page-main"><div class="page-content">
-    <section class="page-heading"><div><h1>Dispositivos e infraestrutura</h1><p>Status do ESP32, MAX30102, AMG8833, display, API Node.js e banco PostgreSQL.</p></div><button class="btn" type="button" onclick="location.reload()">Atualizar</button></section>
+    <section class="page-heading"><div><h1>Dispositivos e infraestrutura</h1><p>Status dos sensores e vínculos de monitoramento no MySQL.</p></div><button class="btn" type="button" onclick="location.reload()">Atualizar</button></section>
     <div class="notice"><strong>i</strong><span>A lista é fornecida por <code>GET /api/devices</code>. Nenhum estado de conexão é presumido pelo frontend.</span></div>
     <div id="devices-grid" style="margin-top:18px"></div>
   </div></main></div>
-  <script src="../js/utils.js"></script><script src="../js/data.js"></script><script src="../js/layout.js"></script><script src="../js/devices.js"></script>
+  <div class="modal" id="assignment-modal" role="dialog" aria-modal="true">
+    <div class="modal-panel"><div class="modal-header"><h2>Vincular dispositivo</h2><button class="icon-button" data-close-assignment type="button">×</button></div>
+      <div class="modal-body"><form id="assignment-form">
+        <input id="assignment-device" name="deviceId" type="hidden">
+        <div class="field"><label for="assignment-patient">Paciente</label><select class="select" id="assignment-patient" name="patientId" required></select></div>
+        <div class="form-actions"><button class="btn" data-close-assignment type="button">Cancelar</button><button class="btn btn-primary" type="submit">Confirmar vínculo</button></div>
+      </form></div>
+    </div>
+  </div>
+  <script src="../js/session.js"></script><script src="../js/utils.js"></script><script src="../js/data.js"></script><script src="../js/layout.js"></script><script src="../js/devices.js"></script>
 </body>
 </html>

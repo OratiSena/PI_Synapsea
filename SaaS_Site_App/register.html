@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Criar conta | Synapsea</title>
+  <link rel="stylesheet" href="css/global.css"><link rel="stylesheet" href="css/components.css"><link rel="stylesheet" href="css/auth.css">
+</head>
+<body class="auth-page" data-auth-required="false">
+  <main class="auth-shell">
+    <div class="auth-brand"><span class="brand-mark">S</span><div><strong>Synapsea</strong><span>Health Tech Platform</span></div></div>
+    <section class="card auth-card">
+      <h1>Criar conta</h1><p>Cadastre um perfil para acessar o monitoramento educacional.</p>
+      <form class="auth-form" id="register-form">
+        <div class="field"><label for="register-name">Nome</label><input class="input" id="register-name" name="name" required maxlength="120"></div>
+        <div class="field"><label for="register-email">Email</label><input class="input" id="register-email" name="email" type="email" required></div>
+        <div class="form-grid">
+          <div class="field"><label for="register-password">Senha</label><input class="input" id="register-password" name="password" type="password" minlength="6" required></div>
+          <div class="field"><label for="register-confirm">Confirmar senha</label><input class="input" id="register-confirm" name="confirmPassword" type="password" minlength="6" required></div>
+        </div>
+        <div class="field"><label for="register-role">Tipo de conta</label><select class="select" id="register-role" name="role"><option value="user">Usuario</option><option value="admin">Administrador</option></select></div>
+        <div class="field hidden" id="admin-code-field"><label for="register-admin-code">Codigo de administrador</label><input class="input" id="register-admin-code" name="adminCode"></div>
+        <p class="auth-message" id="auth-message" aria-live="polite"></p>
+        <button class="btn btn-primary" type="submit">Criar conta</button>
+      </form>
+      <p class="auth-footer">Ja possui conta? <a href="login.html">Entrar</a></p>
+    </section>
+  </main>
+  <script src="js/session.js"></script><script src="js/auth.js"></script>
+</body>
+</html>
