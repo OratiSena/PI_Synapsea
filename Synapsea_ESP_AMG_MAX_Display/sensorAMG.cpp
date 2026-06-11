@@ -1,41 +1,72 @@
 #include "sensorAMG.h"
 
+bool amgDisponivel = false;
+
 void iniciarAMG8833() {
-  if (!amg.begin(0x68)) {
-    Serial.println("Sensor AMG8833 nao encontrado no endereco 0x68");
-    tft.setCursor(10, 10);
-    tft.print("Sensor NAO OK");
-    while (1);
-  } else {
-    Serial.println("Sensor AMG8833 encontrado no endereco 0x68");
-    Serial.print("AMG offset atual: ");
-    Serial.print(AMG_TEMP_OFFSET, 1);
-    Serial.println(" C");
+
+  amgDisponivel = amg.begin(0x69);
+
+  if (!amgDisponivel) {
+
+    Serial.println("AMG8833 OFFLINE - modo simulacao");
+
+    for (int i = 0; i < INTERPOLATED_ROWS * INTERPOLATED_COLS; i++) {
+      dest_2d[i] = 36.5;
+    }
+
+    pix_max = 36.5;
+    return;
   }
+
+  Serial.println("Sensor AMG8833 encontrado no endereco 0x68");
+
+  Serial.print("AMG offset atual: ");
+  Serial.print(AMG_TEMP_OFFSET, 1);
+  Serial.println(" C");
 }
 
 void lerAMG8833() {
+
+  if (!amgDisponivel) {
+
+    for (int i = 0; i < INTERPOLATED_ROWS * INTERPOLATED_COLS; i++) {
+      dest_2d[i] = 36.5;
+    }
+
+    pix_max = 36.5;
+    return;
+  }
+
   amg.readPixels(pixels2);
-  // Aplica OFFSET_TEMP (espelhamento/fixo) + AMG_TEMP_OFFSET (calibração ajustável)
-  for (int i = 0; i < 64; i++)
-    pixels[i] = pixels2[(((int)(i / 8) * 8) + 7 - (i % 8))] + OFFSET_TEMP + AMG_TEMP_OFFSET;
+
+  for (int i = 0; i < 64; i++) {
+    pixels[i] =
+      pixels2[(((int)(i / 8) * 8) + 7 - (i % 8))]
+      + OFFSET_TEMP
+      + AMG_TEMP_OFFSET;
+  }
 
   if (MODE_INTERPOLATION == 2) {
-    interpolate_image(pixels, AMG_ROWS, AMG_COLS, dest_2d, INTERPOLATED_ROWS, INTERPOLATED_COLS);
-  } else if (MODE_INTERPOLATION == 1) {
-    interpolate_linear_image(pixels, AMG_ROWS, AMG_COLS, dest_2d, INTERPOLATED_ROWS, INTERPOLATED_COLS);
-  } else {
-    for (int y = 0; y < INTERPOLATED_ROWS; y++) {
-      for (int x = 0; x < INTERPOLATED_COLS; x++) {
-        int origX = map(x, 0, INTERPOLATED_COLS - 1, 0, AMG_COLS - 1);
-        int origY = map(y, 0, INTERPOLATED_ROWS - 1, 0, AMG_ROWS - 1);
-        float val = get_point(pixels, AMG_ROWS, AMG_COLS, origX, origY);
-        set_point(dest_2d, INTERPOLATED_ROWS, INTERPOLATED_COLS, x, y, val);
-      }
-    }
+    interpolate_image(
+      pixels,
+      AMG_ROWS,
+      AMG_COLS,
+      dest_2d,
+      INTERPOLATED_ROWS,
+      INTERPOLATED_COLS
+    );
+  }
+  else if (MODE_INTERPOLATION == 1) {
+    interpolate_linear_image(
+      pixels,
+      AMG_ROWS,
+      AMG_COLS,
+      dest_2d,
+      INTERPOLATED_ROWS,
+      INTERPOLATED_COLS
+    );
   }
 }
-
 // ─── Funções de interpolação e utilitários ────────────────────────────────
 
 float get_point(float *p, uint8_t rows, uint8_t cols, int8_t x, int8_t y) {

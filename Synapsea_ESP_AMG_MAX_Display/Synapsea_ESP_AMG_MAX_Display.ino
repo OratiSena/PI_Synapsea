@@ -153,6 +153,8 @@ bool telaPrecisaRedesenhar        = true;
 // ─────────────────────────────────────────────────────────────────────────
 void setup() {
   Serial.begin(115200);
+  pinMode(27, OUTPUT);
+  digitalWrite(27, HIGH);
   Wire.begin(21, 22);
 
   tft.begin();
