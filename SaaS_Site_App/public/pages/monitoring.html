@@ -20,7 +20,7 @@
         <div class="monitoring-layout">
           <div>
             <article class="card">
-              <div class="card-header"><div><h2>Mapa térmico AMG8833</h2><p>Escala azul, verde, amarelo e vermelho com indicação do hotspot.</p></div></div>
+              <div class="card-header"><div><h2>Mapa térmico AMG8833</h2><p>Escala azul, verde, amarelo e vermelho com indicação do hotspot.</p></div><span class="badge badge-info" id="heatmap-source">Aguardando matriz</span></div>
               <div class="card-body">
                 <div class="heatmap-stage">
                   <canvas id="thermal-canvas" aria-label="Mapa térmico do AMG8833"></canvas>
@@ -48,7 +48,8 @@
                   <li>Sensor térmico infravermelho</li>
                   <li>Matriz de leitura 8x8</li>
                   <li>Comunicação por interface I2C</li>
-                  <li>Mapa térmico interpolado no navegador</li>
+                  <li>Matriz interpolada recebida diretamente do ESP32</li>
+                  <li>Fallback para interpolação visual da matriz 8x8</li>
                   <li>Identificação visual do hotspot</li>
                   <li>Aplicação educacional e experimental</li>
                 </ul>

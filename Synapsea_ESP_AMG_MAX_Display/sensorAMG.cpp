@@ -1,4 +1,5 @@
 #include "sensorAMG.h"
+#include "telemetry.h"
 
 bool amgDisponivel = false;
 
@@ -76,6 +77,8 @@ void lerAMG8833() {
       dest_2d[i] = pixels[i];
     }
   }
+
+  agendarTelemetriaAMG();
 
   // DEBUG
   for (int i = 0; i < 10; i++) {

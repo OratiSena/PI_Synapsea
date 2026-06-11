@@ -9,6 +9,12 @@
     setText("heatmap-time", data?.timestamp ? `Atualizado ${formatRelativeTime(data.timestamp)}` : "Aguardando leitura real");
     setText("scale-min", data ? formatTemperature(data.minTemp) : "--");
     setText("scale-max", data ? formatTemperature(data.maxTemp) : "--");
+    setText(
+      "heatmap-source",
+      data?.interpolatedGrid
+        ? `${data.interpolationWidth || data.interpolatedGrid[0]?.length}x${data.interpolationHeight || data.interpolatedGrid.length} recebido do ESP32`
+        : "Fallback 8x8 interpolado no navegador"
+    );
   }
 
   function renderSensorDevice(devices) {

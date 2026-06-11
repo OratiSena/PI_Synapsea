@@ -2,9 +2,12 @@
   "use strict";
 
   const STORAGE_KEY = "synapsea.settings";
+
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+
   const defaults = {
-    baseUrl: "http://localhost:3001/api",
-    wsUrl: "ws://localhost:3001",
+    baseUrl: `${window.location.origin}/api`,
+    wsUrl: `${protocol}//${window.location.host}`,
     refreshInterval: 5000,
     demoMode: false
   };
@@ -21,7 +24,7 @@
   const stored = loadStoredSettings();
   const API_CONFIG = {
     ...defaults,
-    baseUrl: stored.baseUrl || defaults.baseUrl,
+    baseUrl: defaults.baseUrl,
     wsUrl: stored.wsUrl || defaults.wsUrl,
     refreshInterval: Math.max(1000, Number(stored.refreshInterval) || defaults.refreshInterval)
   };

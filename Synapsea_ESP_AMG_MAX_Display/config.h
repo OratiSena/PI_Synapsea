@@ -7,6 +7,10 @@
 #include <MAX30105.h>
 #include <heartRate.h>
 #include <spo2_algorithm.h>
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <HTTPClient.h>
+#include "secrets.h"
 
 // ─── Pinos do display ─────────────────────────────────────────────────────
 #define TFT_DC  2
@@ -29,6 +33,20 @@
 #define MODE_INTERPOLATION 2
 #define MINTEMP 10
 #define MAXTEMP 39
+
+// Telemetria HTTPS via ngrok. Credenciais locais ficam em secrets.h.
+#define API_BASE_URL "https://pupil-renderer-defile.ngrok-free.dev/api"
+#define API_VITALS_URL API_BASE_URL "/vitals"
+#define API_TEMPERATURE_URL API_BASE_URL "/temperature"
+#define API_STATUS_URL API_BASE_URL "/system/status"
+#define DEVICE_ID_MAX "max30102-001"
+#define DEVICE_ID_AMG "amg8833-001"
+#define PATIENT_ID "20000000-0000-4000-8000-000000000001"
+#define TELEMETRY_UPLOAD_INTERVAL_MS 5000UL
+
+#ifndef DEVICE_API_KEY
+#define DEVICE_API_KEY ""
+#endif
 
 // ─── Display ECG ──────────────────────────────────────────────────────────
 #define ECG_W  220

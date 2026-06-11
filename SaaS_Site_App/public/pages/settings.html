@@ -15,7 +15,7 @@
           <section class="settings-section">
             <h3>Conexão com o backend</h3><p>Endereço da futura API Node.js/Express e frequência de consulta.</p>
             <div class="form-grid">
-              <div class="field"><label for="base-url">URL da API</label><input class="input" id="base-url" name="baseUrl" type="url" required placeholder="http://localhost:3001/api"></div>
+              <div class="field"><label for="base-url">URL da API</label><input class="input" id="base-url" name="baseUrl" type="url" required readonly></div>
               <div class="field"><label for="refresh-interval">Intervalo de atualização</label><select class="select" id="refresh-interval" name="refreshInterval"><option value="3000">3 segundos</option><option value="5000">5 segundos</option><option value="10000">10 segundos</option><option value="30000">30 segundos</option></select></div>
               <div class="field"><label for="device-id">ID do dispositivo</label><input class="input" id="device-id" name="deviceId" maxlength="80" placeholder="esp32-001"></div>
               <div class="field"><label for="connection-mode">Modo de conexão</label><select class="select" id="connection-mode" name="connectionMode"><option value="rest">REST / polling</option><option value="websocket">WebSocket futuro</option><option value="hybrid">Híbrido futuro</option></select></div>

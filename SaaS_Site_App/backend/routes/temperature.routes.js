@@ -8,7 +8,11 @@ const { buildTemperatureAlerts } = require("../services/insight.service");
 const router = express.Router();
 const columns = `
   t.id, t.patient_id AS patientId, t.device_id AS deviceId, t.timestamp,
-  t.grid, t.max_temp AS maxTemp, t.min_temp AS minTemp,
+  t.grid, t.interpolated_grid AS interpolatedGrid,
+  t.interpolation_width AS interpolationWidth,
+  t.interpolation_height AS interpolationHeight,
+  t.heatmap_pixels AS heatmapPixels, t.heatmap_colors AS heatmapColors,
+  t.max_temp AS maxTemp, t.min_temp AS minTemp,
   t.avg_temp AS avgTemp, t.hotspot_x AS hotspotX, t.hotspot_y AS hotspotY,
   t.created_at AS createdAt`;
 
@@ -49,6 +53,30 @@ router.post("/", async (request, response, next) => {
   if (!validGrid) {
     return response.status(400).json({ error: "grid deve ser uma matriz 8x8." });
   }
+  const hasInterpolatedGrid = Array.isArray(data.interpolatedGrid);
+  const interpolationHeight = Number(data.interpolationHeight)
+    || (hasInterpolatedGrid ? data.interpolatedGrid.length : null);
+  const interpolationWidth = Number(data.interpolationWidth)
+    || (hasInterpolatedGrid && Array.isArray(data.interpolatedGrid[0])
+      ? data.interpolatedGrid[0].length
+      : null);
+  const validInterpolatedGrid = !hasInterpolatedGrid || (
+    Number.isInteger(interpolationWidth)
+    && Number.isInteger(interpolationHeight)
+    && interpolationWidth > 0
+    && interpolationHeight > 0
+    && interpolationWidth <= 64
+    && interpolationHeight <= 64
+    && data.interpolatedGrid.length === interpolationHeight
+    && data.interpolatedGrid.every(
+      (row) => Array.isArray(row) && row.length === interpolationWidth
+    )
+  );
+  if (!validInterpolatedGrid) {
+    return response.status(400).json({
+      error: "interpolatedGrid deve corresponder a interpolationWidth e interpolationHeight."
+    });
+  }
 
   try {
     const idRows = await db.query("SELECT UUID() AS id");
@@ -56,13 +84,20 @@ router.post("/", async (request, response, next) => {
     const timestamp = toMysqlDateTime(data.timestamp) || toMysqlDateTime(new Date());
     await db.query(
       `INSERT INTO temperature_readings (
-        id, patient_id, device_id, timestamp, grid, max_temp, min_temp,
-        avg_temp, hotspot_x, hotspot_y
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        id, patient_id, device_id, timestamp, grid, interpolated_grid,
+        interpolation_width, interpolation_height, heatmap_pixels,
+        heatmap_colors, max_temp, min_temp, avg_temp, hotspot_x, hotspot_y
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id, data.patientId ?? null, data.deviceId ?? null, timestamp,
-        JSON.stringify(data.grid), data.maxTemp ?? null, data.minTemp ?? null,
-        data.avgTemp ?? null, data.hotspotX ?? null, data.hotspotY ?? null
+        JSON.stringify(data.grid),
+        hasInterpolatedGrid ? JSON.stringify(data.interpolatedGrid) : null,
+        hasInterpolatedGrid ? interpolationWidth : null,
+        hasInterpolatedGrid ? interpolationHeight : null,
+        data.heatmapPixels ? JSON.stringify(data.heatmapPixels) : null,
+        data.heatmapColors ? JSON.stringify(data.heatmapColors) : null,
+        data.maxTemp ?? null, data.minTemp ?? null, data.avgTemp ?? null,
+        data.hotspotX ?? null, data.hotspotY ?? null
       ]
     );
 

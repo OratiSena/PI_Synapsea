@@ -20,6 +20,7 @@ mysql -u root -p synapsea < sql/02_create_tables.sql
 mysql -u root -p synapsea < sql/03_seed_initial_data.sql
 mysql -u root -p synapsea < sql/05_auth_adjustments.sql
 mysql -u root -p synapsea < sql/06_auth_and_insights.sql
+mysql -u root -p synapsea < sql/07_temperature_interpolation.sql
 ```
 
 3. Copie `.env.example` para `.env` e ajuste as credenciais.
@@ -41,8 +42,11 @@ npm run seed:users
 npm run dev
 ```
 
-7. Acesse `http://localhost:3001/api`.
-8. Abra o frontend pelo Live Server em `http://127.0.0.1:5500`.
+7. Acesse o site em `http://localhost:3001`.
+8. Acesse a API em `http://localhost:3001/api`.
+
+O Express serve os arquivos estáticos da pasta `../public`. Não é necessário
+usar Live Server.
 
 ## Credenciais locais
 
@@ -87,6 +91,11 @@ Os endpoints de leitura aceitam `patientId` e `deviceId`. Requisicoes
 autenticadas sao filtradas pelas permissoes da conta. O envio dos sensores
 permanece temporariamente compativel sem JWT para futura autenticacao propria
 do ESP32.
+
+O endpoint de temperatura aceita a matriz bruta `grid` 8x8 e, opcionalmente,
+`interpolatedGrid`, `interpolationWidth`, `interpolationHeight`,
+`heatmapPixels` e `heatmapColors`. Clientes antigos continuam compatíveis
+usando apenas `grid`.
 
 ## Gestao
 

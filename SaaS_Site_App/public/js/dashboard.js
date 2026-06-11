@@ -85,12 +85,13 @@
 
   async function loadDashboard() {
     const message = document.getElementById("dashboard-api-message");
-    const [vitals, history, alerts, devices, insight] = await Promise.all([
+    const [vitals, history, alerts, devices, insight, temperature] = await Promise.all([
       getLatestVitals(),
       getVitalsHistory(),
       getAlerts(),
       getDevices(),
-      getLatestInsight()
+      getLatestInsight(),
+      getLatestTemperature()
     ]);
 
     renderVitals(vitals);
@@ -98,6 +99,7 @@
     renderAlerts(Array.isArray(alerts) ? alerts : []);
     renderDevices(Array.isArray(devices) ? devices : []);
     renderInsight(insight);
+    renderThermalHeatmap("dashboard-thermal-canvas", temperature);
 
     const hasData = Boolean(vitals) || (history?.length || alerts?.length || devices?.length);
     if (message) {

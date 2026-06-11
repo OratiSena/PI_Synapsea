@@ -1,6 +1,6 @@
 (function () {
   "use strict";
-  const API_URL = "http://localhost:3001/api";
+  const API_URL = `${window.location.origin}/api`;
 
   function setMessage(message, type = "error") {
     const target = document.getElementById("auth-message");

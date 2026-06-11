@@ -11,6 +11,7 @@
 #include "sensorAMG.h"
 #include "sensorMAX.h"
 #include "display.h"
+#include "telemetry.h"
 
 // ─── Definição dos objetos globais ────────────────────────────────────────
 DFRobot_ST7789_240x320_HW_SPI tft(TFT_DC, TFT_CS, TFT_RST);
@@ -175,6 +176,7 @@ void setup() {
   I2C_MAX.begin(25, 26);
   scannerI2CMAX();
   iniciarMAX30102();
+  iniciarTelemetria();
 }
 
 void loop() {

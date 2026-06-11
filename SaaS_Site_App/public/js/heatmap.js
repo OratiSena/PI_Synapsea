@@ -26,8 +26,15 @@
   function renderThermalHeatmap(canvasId, temperatureData) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
-    const grid = temperatureData?.grid;
-    if (!Array.isArray(grid) || grid.length !== 8 || grid.some((row) => !Array.isArray(row) || row.length !== 8)) {
+    const rawGrid = temperatureData?.grid;
+    const interpolatedGrid = temperatureData?.interpolatedGrid;
+    const hasInterpolatedGrid = Array.isArray(interpolatedGrid)
+      && interpolatedGrid.length > 0
+      && interpolatedGrid.every(
+        (row) => Array.isArray(row) && row.length === interpolatedGrid[0].length
+      );
+    const grid = hasInterpolatedGrid ? interpolatedGrid : rawGrid;
+    if (!Array.isArray(grid) || !grid.length || !Array.isArray(grid[0]) || !grid[0].length) {
       canvas.classList.add("hidden");
       const empty = document.getElementById(`${canvasId}-empty`);
       if (empty) {
@@ -52,10 +59,12 @@
     ctx.scale(dpr, dpr);
 
     const source = document.createElement("canvas");
-    source.width = 8;
-    source.height = 8;
+    const rows = grid.length;
+    const columns = grid[0].length;
+    source.width = columns;
+    source.height = rows;
     const sourceCtx = source.getContext("2d");
-    const pixels = sourceCtx.createImageData(8, 8);
+    const pixels = sourceCtx.createImageData(columns, rows);
     grid.flat().forEach((value, index) => {
       const color = colorFor(Number(value), min, max).match(/\d+/g).map(Number);
       pixels.data[index * 4] = color[0];
@@ -71,9 +80,11 @@
     const hotspotX = safeNumber(temperatureData.hotspotX);
     const hotspotY = safeNumber(temperatureData.hotspotY);
     if (hotspotX !== null && hotspotY !== null) {
-      const cell = displaySize / 8;
-      const x = (hotspotX + 0.5) * cell;
-      const y = (hotspotY + 0.5) * cell;
+      const rawColumns = Array.isArray(rawGrid?.[0]) ? rawGrid[0].length : columns;
+      const rawRows = Array.isArray(rawGrid) ? rawGrid.length : rows;
+      const x = ((hotspotX + 0.5) / rawColumns) * displaySize;
+      const y = ((hotspotY + 0.5) / rawRows) * displaySize;
+      const cell = displaySize / Math.max(rawColumns, rawRows);
       ctx.strokeStyle = "#ffffff";
       ctx.lineWidth = 2;
       ctx.beginPath();

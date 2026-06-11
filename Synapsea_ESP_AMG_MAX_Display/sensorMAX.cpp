@@ -1,4 +1,5 @@
 #include "sensorMAX.h"
+#include "telemetry.h"
 
 void scannerI2CMAX() {
   Serial.println("Escaneando I2C_MAX (GPIO25/GPIO26)...");
@@ -281,4 +282,6 @@ void lerMAX30102() {
     Serial.print(" RESP=");
     if (respRPM > 0) Serial.println(respRPM); else Serial.println("--");
   }
+
+  agendarTelemetriaMAX();
 }

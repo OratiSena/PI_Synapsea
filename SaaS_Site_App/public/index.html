@@ -96,6 +96,16 @@
               </div>
               <div class="card-body" id="dashboard-devices"></div>
             </article>
+            <article class="card">
+              <div class="card-header">
+                <div><h2>Mapa térmico</h2><p>Interpolação mais recente do AMG8833.</p></div>
+                <a class="btn btn-sm" href="pages/monitoring.html">Ampliar</a>
+              </div>
+              <div class="card-body dashboard-heatmap">
+                <canvas id="dashboard-thermal-canvas" aria-label="Mapa térmico interpolado"></canvas>
+                <div id="dashboard-thermal-canvas-empty"></div>
+              </div>
+            </article>
           </div>
         </section>
 
@@ -116,6 +126,7 @@
   <script src="js/data.js"></script>
   <script src="js/layout.js"></script>
   <script src="js/charts.js"></script>
+  <script src="js/heatmap.js"></script>
   <script src="js/dashboard.js"></script>
 </body>
 </html>

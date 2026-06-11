@@ -11,7 +11,7 @@
   }
 
   function updatePreview(settings) {
-    setText("preview-api", settings.baseUrl || API_CONFIG.baseUrl);
+    setText("preview-api", API_CONFIG.baseUrl);
     setText("preview-interval", `${settings.refreshInterval || API_CONFIG.refreshInterval} ms`);
     setText("preview-device", settings.deviceId || "Não definido");
     setText("preview-mode", settings.connectionMode || "REST");
@@ -20,7 +20,8 @@
   document.addEventListener("DOMContentLoaded", () => {
     const form = document.getElementById("settings-form");
     const stored = getSettings();
-    form.baseUrl.value = stored.baseUrl || API_CONFIG.baseUrl;
+    form.baseUrl.value = API_CONFIG.baseUrl;
+    form.baseUrl.readOnly = true;
     form.refreshInterval.value = stored.refreshInterval || API_CONFIG.refreshInterval;
     form.deviceId.value = stored.deviceId || "";
     form.connectionMode.value = stored.connectionMode || "rest";
@@ -32,7 +33,7 @@
       event.preventDefault();
       const values = Object.fromEntries(new FormData(form));
       const settings = {
-        baseUrl: String(values.baseUrl || "").replace(/\/+$/, ""),
+        baseUrl: API_CONFIG.baseUrl,
         refreshInterval: Math.max(1000, Number(values.refreshInterval) || 5000),
         deviceId: String(values.deviceId || "").trim(),
         connectionMode: values.connectionMode || "rest",

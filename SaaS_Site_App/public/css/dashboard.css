@@ -296,6 +296,17 @@
 .insight-content strong { display: block; color: #cbd5e1; font-size: 0.78rem; }
 .insight-content small { display: block; margin-top: 12px; color: var(--muted-dark); }
 
+.dashboard-heatmap {
+  display: grid;
+  min-height: 230px;
+  place-items: center;
+}
+
+.dashboard-heatmap canvas {
+  border-radius: 12px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.32);
+}
+
 @media (max-width: 1320px) {
   .vitals-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
