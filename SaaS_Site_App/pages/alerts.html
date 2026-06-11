@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Alertas | Synapsea</title>
+  <link rel="stylesheet" href="../css/global.css"><link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css"><link rel="stylesheet" href="../css/alerts.css">
+</head>
+<body data-page="alerts" data-title="Alertas">
+  <div class="app-shell"><main class="page-main"><div class="page-content">
+    <section class="page-heading"><div><h1>Central de alertas</h1><p>Eventos recebidos dos sensores e regras educacionais configuradas no backend.</p></div></section>
+    <div class="notice"><strong>i</strong><span>Alertas auxiliam a observação. Eles não representam diagnóstico ou orientação médica.</span></div>
+    <article class="card" style="margin-top:18px">
+      <div class="card-header">
+        <div><h2>Alertas recebidos</h2><p>Filtre por nível de atenção.</p></div>
+        <div class="segmented" aria-label="Filtros de alerta">
+          <button class="segment-btn active" data-filter="all">Todos</button>
+          <button class="segment-btn" data-filter="info">Info</button>
+          <button class="segment-btn" data-filter="success">Sucesso</button>
+          <button class="segment-btn" data-filter="warning">Aviso</button>
+          <button class="segment-btn" data-filter="critical">Crítico</button>
+        </div>
+      </div>
+      <div class="card-body" id="alerts-list"></div>
+    </article>
+  </div></main></div>
+  <script src="../js/utils.js"></script><script src="../js/data.js"></script><script src="../js/layout.js"></script><script src="../js/alerts.js"></script>
+</body>
+</html>

@@ -1,0 +1,110 @@
+.monitoring-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.7fr);
+  gap: 18px;
+}
+
+.heatmap-stage {
+  display: grid;
+  min-height: 420px;
+  padding: 20px;
+  background:
+    linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px),
+    rgba(0, 0, 0, 0.24);
+  background-size: 28px 28px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  place-items: center;
+}
+
+.heatmap-stage canvas {
+  border-radius: 10px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.32);
+}
+
+.temperature-scale {
+  height: 10px;
+  margin-top: 14px;
+  background: linear-gradient(90deg, #0e4c92, #00bea0, #facc15, #ef4444);
+  border-radius: 999px;
+}
+
+.scale-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.temperature-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.temperature-stat {
+  padding: 18px;
+  text-align: center;
+}
+
+.temperature-stat span {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.temperature-stat strong {
+  font-size: 1.65rem;
+}
+
+.tech-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tech-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.78rem;
+}
+
+.tech-list li:last-child {
+  border-bottom: 0;
+}
+
+.tech-list li::before {
+  width: 7px;
+  height: 7px;
+  background: var(--primary);
+  border-radius: 50%;
+  content: "";
+  box-shadow: 0 0 10px rgba(0, 212, 255, 0.45);
+}
+
+@media (max-width: 1050px) {
+  .monitoring-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .temperature-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .heatmap-stage {
+    min-height: 310px;
+    padding: 10px;
+  }
+}

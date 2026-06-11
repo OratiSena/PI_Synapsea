@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Synapsea - plataforma educacional de monitoramento biomédico.">
+  <title>Visão Geral | Synapsea</title>
+  <link rel="stylesheet" href="css/global.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body data-page="overview" data-title="Visão Geral">
+  <div class="app-shell">
+    <main class="page-main">
+      <div class="page-content">
+        <section class="page-heading">
+          <div>
+            <h1>Visão geral do monitoramento</h1>
+            <p>Acompanhe os sinais enviados pelo circuito Synapsea. Indicadores são educacionais e não substituem equipamento médico profissional.</p>
+          </div>
+          <span class="badge badge-info">Atualização automática</span>
+        </section>
+
+        <div class="notice dashboard-message" id="dashboard-api-message">
+          <strong aria-hidden="true">i</strong>
+          <span>Nenhuma leitura recebida ainda. Conecte o circuito Synapsea ou configure a API para iniciar o monitoramento.</span>
+        </div>
+
+        <section class="vitals-grid" aria-label="Sinais vitais mais recentes">
+          <article class="card vital-card" style="--metric-color:#ef4444">
+            <div class="vital-top"><span class="metric-icon">♥</span><span class="badge">MAX30102</span></div>
+            <p class="vital-label">Batimentos</p>
+            <div class="vital-value-row"><strong class="vital-value" id="metric-bpm">--</strong><span class="vital-unit">BPM</span></div>
+            <div class="vital-status" id="status-bpm">Aguardando leitura</div>
+          </article>
+          <article class="card vital-card" style="--metric-color:#38bdf8">
+            <div class="vital-top"><span class="metric-icon">O₂</span><span class="badge">MAX30102</span></div>
+            <p class="vital-label">Saturação SpO₂</p>
+            <div class="vital-value-row"><strong class="vital-value" id="metric-spo2">--</strong><span class="vital-unit">%</span></div>
+            <div class="vital-status" id="status-spo2">Aguardando leitura</div>
+          </article>
+          <article class="card vital-card" style="--metric-color:#a78bfa">
+            <div class="vital-top"><span class="metric-icon">°C</span><span class="badge">Sensor</span></div>
+            <p class="vital-label">Temperatura</p>
+            <div class="vital-value-row"><strong class="vital-value" id="metric-temperature">--</strong><span class="vital-unit">°C</span></div>
+            <div class="vital-status" id="status-temperature">Aguardando leitura</div>
+          </article>
+          <article class="card vital-card" style="--metric-color:#f59e0b">
+            <div class="vital-top"><span class="metric-icon">S</span><span class="badge">Estimado</span></div>
+            <p class="vital-label">Índice de estresse</p>
+            <div class="vital-value-row"><strong class="vital-value" id="metric-stress">--</strong><span class="vital-unit">índice</span></div>
+            <div class="vital-status" id="status-stress">Aguardando leitura</div>
+          </article>
+          <article class="card vital-card" style="--metric-color:#00d4ff">
+            <div class="vital-top"><span class="metric-icon">R</span><span class="badge">Estimado</span></div>
+            <p class="vital-label">Respiração</p>
+            <div class="vital-value-row"><strong class="vital-value" id="metric-respiration">--</strong><span class="vital-unit">rpm</span></div>
+            <div class="vital-status" id="status-respiration">Aguardando leitura</div>
+          </article>
+          <article class="card vital-card" style="--metric-color:#22c55e">
+            <div class="vital-top"><span class="metric-icon">✓</span><span class="badge">Geral</span></div>
+            <p class="vital-label">Status geral</p>
+            <div class="vital-value-row"><strong class="vital-value" id="metric-general">--</strong></div>
+            <div class="vital-status" id="status-general">Aguardando dados</div>
+          </article>
+        </section>
+
+        <section class="dashboard-layout">
+          <article class="card">
+            <div class="card-header">
+              <div><h2>Histórico de sinais vitais</h2><p>Leituras recebidas da API REST.</p></div>
+              <div class="chart-legend">
+                <span class="legend-item"><i class="legend-dot" style="background:#ef4444"></i>BPM</span>
+                <span class="legend-item"><i class="legend-dot" style="background:#38bdf8"></i>SpO₂</span>
+                <span class="legend-item"><i class="legend-dot" style="background:#a78bfa"></i>Temperatura</span>
+                <span class="legend-item"><i class="legend-dot" style="background:#f59e0b"></i>Estresse</span>
+                <span class="legend-item"><i class="legend-dot" style="background:#00d4ff"></i>Respiração</span>
+              </div>
+            </div>
+            <div class="card-body chart-wrap" id="vitals-chart"></div>
+          </article>
+
+          <div class="side-stack">
+            <article class="card">
+              <div class="card-header">
+                <div><h2>Alertas recentes</h2><p>Análise educacional.</p></div>
+                <a class="btn btn-sm" href="pages/alerts.html">Ver todos</a>
+              </div>
+              <div class="card-body" id="dashboard-alerts"></div>
+            </article>
+            <article class="card">
+              <div class="card-header">
+                <div><h2>Dispositivos</h2><p>Última sincronização informada.</p></div>
+                <a class="btn btn-sm" href="pages/devices.html">Detalhes</a>
+              </div>
+              <div class="card-body" id="dashboard-devices"></div>
+            </article>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+  <script src="js/utils.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/layout.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/dashboard.js"></script>
+</body>
+</html>

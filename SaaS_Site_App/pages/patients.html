@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pacientes | Synapsea</title>
+  <link rel="stylesheet" href="../css/global.css"><link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css"><link rel="stylesheet" href="../css/patients.css">
+</head>
+<body data-page="patients" data-title="Pacientes">
+  <div class="app-shell"><main class="page-main"><div class="page-content">
+    <section class="page-heading patients-toolbar"><div><h1>Pacientes</h1><p>Cadastros vinculáveis às futuras sessões de leitura armazenadas no PostgreSQL.</p></div><button class="btn btn-primary" id="open-patient-modal" type="button">Cadastrar paciente</button></section>
+    <article class="card"><div class="card-header"><div><h2>Pacientes cadastrados</h2><p>Dados fornecidos por <code>GET /api/patients</code>.</p></div></div><div class="card-body" id="patients-content"></div></article>
+  </div></main></div>
+  <div class="modal" id="patient-modal" role="dialog" aria-modal="true" aria-labelledby="patient-modal-title">
+    <div class="modal-panel">
+      <div class="modal-header"><h2 id="patient-modal-title">Cadastrar paciente</h2><button class="icon-button" data-close-patient-modal type="button" aria-label="Fechar">×</button></div>
+      <div class="modal-body">
+        <form id="patient-form">
+          <div class="form-grid">
+            <div class="field"><label for="patient-name">Nome</label><input class="input" id="patient-name" name="name" required maxlength="120"></div>
+            <div class="field"><label for="patient-age">Idade</label><input class="input" id="patient-age" name="age" type="number" min="0" max="130" required></div>
+            <div class="field"><label for="patient-id">Identificação</label><input class="input" id="patient-id" name="identifier" required maxlength="60"></div>
+            <div class="field"><label for="patient-status">Status</label><select class="select" id="patient-status" name="status"><option value="active">Ativo</option><option value="inactive">Inativo</option></select></div>
+          </div>
+          <div class="form-actions"><button class="btn" data-close-patient-modal type="button">Cancelar</button><button class="btn btn-primary" type="submit">Enviar para API</button></div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <script src="../js/utils.js"></script><script src="../js/data.js"></script><script src="../js/layout.js"></script><script src="../js/patients.js"></script>
+</body>
+</html>

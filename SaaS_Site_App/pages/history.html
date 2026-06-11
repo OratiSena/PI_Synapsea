@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Histórico | Synapsea</title>
+  <link rel="stylesheet" href="../css/global.css"><link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css"><link rel="stylesheet" href="../css/history.css">
+</head>
+<body data-page="history" data-title="Histórico">
+  <div class="app-shell"><main class="page-main"><div class="page-content">
+    <section class="page-heading"><div><h1>Histórico de leituras</h1><p>Consulta preparada para sinais vitais e temperatura persistidos no PostgreSQL.</p></div></section>
+    <section class="history-summary">
+      <article class="card summary-card"><span>Total carregado</span><strong id="history-total">0</strong></article>
+      <article class="card summary-card"><span>Sinais vitais</span><strong id="history-vitals">0</strong></article>
+      <article class="card summary-card"><span>Mapas térmicos</span><strong id="history-thermal">0</strong></article>
+    </section>
+    <article class="card">
+      <div class="card-header"><div><h2>Registros</h2><p>Filtros aplicados localmente sobre os resultados da API.</p></div></div>
+      <div class="card-body">
+        <form class="filter-bar" id="history-filters">
+          <div class="field"><label for="history-patient">Paciente</label><input class="input" id="history-patient" placeholder="ID do paciente"></div>
+          <div class="field"><label for="history-date">Data</label><input class="input" id="history-date" type="date"></div>
+          <div class="field"><label for="history-type">Tipo de leitura</label><select class="select" id="history-type"><option value="">Todos</option><option value="vitals">Sinais vitais</option><option value="temperature">Temperatura</option></select></div>
+          <button class="btn" id="clear-history-filters" type="button">Limpar</button>
+        </form>
+        <div id="history-content"></div>
+      </div>
+    </article>
+  </div></main></div>
+  <script src="../js/utils.js"></script><script src="../js/data.js"></script><script src="../js/layout.js"></script><script src="../js/history.js"></script>
+</body>
+</html>

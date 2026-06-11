@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Configurações | Synapsea</title>
+  <link rel="stylesheet" href="../css/global.css"><link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css"><link rel="stylesheet" href="../css/settings.css">
+</head>
+<body data-page="settings" data-title="Configurações">
+  <div class="app-shell"><main class="page-main"><div class="page-content">
+    <section class="page-heading"><div><h1>Configurações</h1><p>Preferências técnicas armazenadas apenas no navegador. Não informe senhas, tokens ou dados sensíveis.</p></div></section>
+    <div class="settings-layout">
+      <article class="card"><div class="card-body">
+        <form id="settings-form">
+          <section class="settings-section">
+            <h3>Conexão com o backend</h3><p>Endereço da futura API Node.js/Express e frequência de consulta.</p>
+            <div class="form-grid">
+              <div class="field"><label for="base-url">URL da API</label><input class="input" id="base-url" name="baseUrl" type="url" required placeholder="http://localhost:3001/api"></div>
+              <div class="field"><label for="refresh-interval">Intervalo de atualização</label><select class="select" id="refresh-interval" name="refreshInterval"><option value="3000">3 segundos</option><option value="5000">5 segundos</option><option value="10000">10 segundos</option><option value="30000">30 segundos</option></select></div>
+              <div class="field"><label for="device-id">ID do dispositivo</label><input class="input" id="device-id" name="deviceId" maxlength="80" placeholder="esp32-001"></div>
+              <div class="field"><label for="connection-mode">Modo de conexão</label><select class="select" id="connection-mode" name="connectionMode"><option value="rest">REST / polling</option><option value="websocket">WebSocket futuro</option><option value="hybrid">Híbrido futuro</option></select></div>
+            </div>
+          </section>
+          <section class="settings-section">
+            <h3>Preferências de exibição</h3><p>Opções locais preparadas para evolução da interface.</p>
+            <label class="compact-item"><span>Modo compacto</span><input id="compact-mode" name="compactMode" type="checkbox"></label>
+            <label class="compact-item" style="margin-top:10px"><span>Reduzir animações</span><input id="reduced-motion" name="reducedMotion" type="checkbox"></label>
+          </section>
+          <div class="form-actions"><button class="btn btn-danger" id="reset-settings" type="button">Restaurar padrão</button><button class="btn btn-primary" type="submit">Salvar configurações</button></div>
+        </form>
+      </div></article>
+      <aside class="side-stack">
+        <article class="card">
+          <div class="card-header"><div><h2>Configuração ativa</h2><p>Valores carregados no navegador.</p></div></div>
+          <div class="card-body connection-preview">
+            <div class="connection-row"><span>API REST</span><strong id="preview-api">--</strong></div>
+            <div class="connection-row"><span>Intervalo</span><strong id="preview-interval">--</strong></div>
+            <div class="connection-row"><span>Dispositivo</span><strong id="preview-device">--</strong></div>
+            <div class="connection-row"><span>Modo</span><strong id="preview-mode">--</strong></div>
+            <button class="btn" id="test-api" type="button">Testar API atual</button>
+          </div>
+        </article>
+        <div class="notice"><strong>i</strong><span>Alterar a URL não envia credenciais. O frontend usa somente requisições <code>fetch()</code>.</span></div>
+      </aside>
+    </div>
+  </div></main></div>
+  <script src="../js/utils.js"></script><script src="../js/data.js"></script><script src="../js/layout.js"></script><script src="../js/settings.js"></script>
+</body>
+</html>
