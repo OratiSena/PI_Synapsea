@@ -45,6 +45,35 @@ function isValidTemperatureMatrix(matrix, rows, columns) {
     );
 }
 
+function temperatureDiagnostics(data, reason) {
+  const gridIsArray = Array.isArray(data.grid);
+  const interpolatedGridIsArray = Array.isArray(data.interpolatedGrid);
+  console.warn("Leitura AMG8833 descartada:", {
+    reason,
+    maxTemp: data.maxTemp,
+    minTemp: data.minTemp,
+    avgTemp: data.avgTemp,
+    gridType: typeof data.grid,
+    gridIsArray,
+    gridRows: gridIsArray ? data.grid.length : undefined,
+    firstRowCols: gridIsArray && Array.isArray(data.grid[0])
+      ? data.grid[0].length
+      : undefined,
+    interpolatedGridIsArray,
+    interpolatedRows: interpolatedGridIsArray
+      ? data.interpolatedGrid.length
+      : undefined,
+    interpolatedFirstRowCols: interpolatedGridIsArray
+      && Array.isArray(data.interpolatedGrid[0])
+      ? data.interpolatedGrid[0].length
+      : undefined,
+    interpolationWidth: data.interpolationWidth,
+    interpolationHeight: data.interpolationHeight,
+    hotspotX: data.hotspotX,
+    hotspotY: data.hotspotY
+  });
+}
+
 router.get("/latest", optionalAuthenticate, async (request, response, next) => {
   try {
     const scope = buildReadingScope(request, "t");
@@ -78,7 +107,7 @@ router.post("/", async (request, response, next) => {
   const data = request.body || {};
   const validGrid = isValidTemperatureMatrix(data.grid, 8, 8);
   if (!validGrid) {
-    console.warn("Leitura AMG8833 descartada: grid 8x8 invalido.");
+    temperatureDiagnostics(data, "grid 8x8 invalido");
     return response.status(400).json({
       error: "grid deve ser uma matriz 8x8 com temperaturas entre -20 e 120 graus."
     });
@@ -93,10 +122,8 @@ router.post("/", async (request, response, next) => {
   const validInterpolatedGrid = !hasInterpolatedGrid || (
     Number.isInteger(interpolationWidth)
     && Number.isInteger(interpolationHeight)
-    && interpolationWidth > 0
-    && interpolationHeight > 0
-    && interpolationWidth <= 64
-    && interpolationHeight <= 64
+    && interpolationWidth === 30
+    && interpolationHeight === 30
     && data.interpolatedGrid.length === interpolationHeight
     && isValidTemperatureMatrix(
       data.interpolatedGrid,
@@ -105,7 +132,7 @@ router.post("/", async (request, response, next) => {
     )
   );
   if (!validInterpolatedGrid) {
-    console.warn("Leitura AMG8833 descartada: interpolatedGrid invalido.");
+    temperatureDiagnostics(data, "interpolatedGrid invalido");
     return response.status(400).json({
       error: "interpolatedGrid deve ter dimensoes validas e temperaturas entre -20 e 120 graus."
     });
@@ -121,7 +148,7 @@ router.post("/", async (request, response, next) => {
     && data.hotspotY >= 0
     && data.hotspotY < 8;
   if (!validStats || !validHotspot) {
-    console.warn("Leitura AMG8833 descartada: estatisticas ou hotspot invalidos.");
+    temperatureDiagnostics(data, "estatisticas ou hotspot invalidos");
     return response.status(400).json({
       error: "minTemp, avgTemp, maxTemp e hotspot devem representar uma leitura AMG8833 valida."
     });
@@ -135,7 +162,7 @@ router.post("/", async (request, response, next) => {
     && Math.abs(data.maxTemp - calculatedMax) <= 0.05
     && Math.abs(data.avgTemp - calculatedAvg) <= 0.05;
   if (!statsMatchGrid) {
-    console.warn("Leitura AMG8833 descartada: estatisticas nao correspondem ao grid.");
+    temperatureDiagnostics(data, "estatisticas nao correspondem ao grid");
     return response.status(400).json({
       error: "maxTemp, minTemp e avgTemp nao correspondem a matriz grid recebida."
     });

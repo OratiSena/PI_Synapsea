@@ -249,7 +249,7 @@ static void uploadTemperature() {
   payload += String(hotspotY);
   payload += '}';
 
-  Serial.println("AMG8833 snapshot valido");
+  Serial.println("AMG LOCAL ANTES DO POST");
   Serial.print("minTemp: ");
   Serial.println(minimum, 2);
   Serial.print("avgTemp: ");
@@ -260,6 +260,29 @@ static void uploadTemperature() {
   Serial.println(hotspotX);
   Serial.print("hotspotY: ");
   Serial.println(hotspotY);
+  Serial.print("grid[0][0]: ");
+  Serial.println(rawForUpload[0], 2);
+  Serial.print("grid[0][1]: ");
+  Serial.println(rawForUpload[1], 2);
+  Serial.print("grid[1][0]: ");
+  Serial.println(rawForUpload[AMG_COLS], 2);
+  Serial.print("grid[7][7]: ");
+  Serial.println(rawForUpload[(AMG_ROWS * AMG_COLS) - 1], 2);
+  Serial.print("interpolatedGrid[0][0]: ");
+  Serial.println(interpolatedForUpload[0], 2);
+  Serial.print("interpolatedGrid[15][15]: ");
+  Serial.println(
+    interpolatedForUpload[15 * INTERPOLATED_COLS + 15],
+    2
+  );
+  Serial.print("interpolatedGrid[29][29]: ");
+  Serial.println(
+    interpolatedForUpload[
+      (INTERPOLATED_ROWS - 1) * INTERPOLATED_COLS
+      + (INTERPOLATED_COLS - 1)
+    ],
+    2
+  );
   Serial.print("grid: ");
   Serial.print(AMG_COLS);
   Serial.print('x');
@@ -268,6 +291,8 @@ static void uploadTemperature() {
   Serial.print(INTERPOLATED_COLS);
   Serial.print('x');
   Serial.println(INTERPOLATED_ROWS);
+  Serial.print("JSON bytes: ");
+  Serial.println(payload.length());
   Serial.print("POST ");
   Serial.println(API_TEMPERATURE_URL);
 

@@ -55,7 +55,11 @@
     if (!canvas) return;
     const rawGrid = temperatureData?.grid;
     const interpolatedGrid = temperatureData?.interpolatedGrid;
-    const hasInterpolatedGrid = isValidThermalGrid(interpolatedGrid);
+    const hasInterpolatedGrid = isValidThermalGrid(interpolatedGrid)
+      && interpolatedGrid.length === 30
+      && interpolatedGrid[0].length === 30
+      && Number(temperatureData?.interpolationWidth) === 30
+      && Number(temperatureData?.interpolationHeight) === 30;
     const grid = hasInterpolatedGrid ? interpolatedGrid : rawGrid;
     if (!isValidTemperatureReading(temperatureData) || !isValidThermalGrid(grid)) {
       canvas.classList.add("hidden");

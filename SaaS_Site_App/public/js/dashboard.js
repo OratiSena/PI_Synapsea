@@ -69,7 +69,9 @@
     setText("metric-temperature", valid ? formatValue(temperature.maxTemp, 1) : "--");
     setText(
       "status-temperature",
-      valid ? "Máxima recebida do AMG8833" : "Aguardando leitura válida"
+      valid && temperature.timestamp
+        ? `Máxima, atualizada ${formatRelativeTime(temperature.timestamp)}`
+        : "Aguardando leitura válida"
     );
   }
 
@@ -94,9 +96,18 @@
 
   async function loadDashboard() {
     const message = document.getElementById("dashboard-api-message");
-    const [vitals, history, alerts, devices, insight, temperature] = await Promise.all([
+    const [
+      vitals,
+      history,
+      temperatureHistory,
+      alerts,
+      devices,
+      insight,
+      temperature
+    ] = await Promise.all([
       getLatestVitals(),
       getVitalsHistory(),
+      getTemperatureHistory(),
       getAlerts(),
       getDevices(),
       getLatestInsight(),
@@ -105,7 +116,7 @@
 
     renderVitals(vitals);
     renderTemperatureMetric(temperature);
-    renderVitalsChart("vitals-chart", history);
+    renderVitalsChart("vitals-chart", history, temperatureHistory);
     renderAlerts(Array.isArray(alerts) ? alerts : []);
     renderDevices(Array.isArray(devices) ? devices : []);
     renderInsight(insight);
@@ -126,7 +137,13 @@
     window.setInterval(loadDashboard, API_CONFIG.refreshInterval);
     window.addEventListener("resize", () => {
       window.clearTimeout(window.__synapseaChartResize);
-      window.__synapseaChartResize = window.setTimeout(() => getVitalsHistory().then((data) => renderVitalsChart("vitals-chart", data)), 180);
+      window.__synapseaChartResize = window.setTimeout(async () => {
+        const [vitals, temperatures] = await Promise.all([
+          getVitalsHistory(),
+          getTemperatureHistory()
+        ]);
+        renderVitalsChart("vitals-chart", vitals, temperatures);
+      }, 180);
     });
   });
 })();

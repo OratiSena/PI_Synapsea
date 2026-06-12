@@ -2,23 +2,31 @@
   "use strict";
 
   const series = [
-    { key: "bpm", label: "BPM", color: "#ef4444" },
-    { key: "spo2", label: "SpO₂", color: "#38bdf8" },
-    { key: "temperature", label: "Temperatura", color: "#a78bfa" },
-    { key: "stressIndex", label: "Estresse", color: "#f59e0b" },
-    { key: "respiration", label: "Respiração", color: "#00d4ff" }
+    { key: "bpm", label: "BPM", color: "#ef4444", source: "vitals" },
+    { key: "spo2", label: "SpO2", color: "#38bdf8", source: "vitals" },
+    { key: "avgTemp", label: "Temperatura", color: "#a78bfa", source: "temperature" },
+    { key: "stressIndex", label: "Estresse", color: "#f59e0b", source: "vitals" },
+    { key: "respiration", label: "Respiracao", color: "#00d4ff", source: "vitals" }
   ];
 
-  function renderVitalsChart(containerId, data) {
+  function renderVitalsChart(containerId, vitalsData, temperatureData = []) {
     const container = document.getElementById(containerId);
     if (!container) return;
-    const rows = Array.isArray(data) ? data.filter(Boolean) : [];
-    if (!rows.length) {
-      showEmptyState(container, "Aguardando histórico de sinais vitais.");
+
+    const vitals = Array.isArray(vitalsData) ? vitalsData.filter(Boolean) : [];
+    const temperatures = Array.isArray(temperatureData)
+      ? temperatureData.filter((row) => window.isValidTemperatureReading?.(row))
+      : [];
+    const allRows = [...vitals, ...temperatures]
+      .filter((row) => row.timestamp && !Number.isNaN(new Date(row.timestamp).getTime()))
+      .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+    if (!allRows.length) {
+      showEmptyState(container, "Aguardando historico de sinais vitais.");
       return;
     }
 
-    container.innerHTML = '<canvas class="chart-canvas" aria-label="Gráfico de sinais vitais"></canvas>';
+    container.innerHTML = '<canvas class="chart-canvas" aria-label="Grafico de sinais vitais"></canvas>';
     const canvas = container.querySelector("canvas");
     const dpr = window.devicePixelRatio || 1;
     const width = Math.max(320, container.clientWidth);
@@ -47,11 +55,21 @@
       ctx.stroke();
     }
 
+    const firstTimestamp = new Date(allRows[0].timestamp).getTime();
+    const lastTimestamp = new Date(allRows[allRows.length - 1].timestamp).getTime();
+    const timeRange = Math.max(1, lastTimestamp - firstTimestamp);
+
     series.forEach((item) => {
-      const points = rows
-        .map((row, index) => ({ index, value: safeNumber(row[item.key]) }))
-        .filter((point) => point.value !== null);
-      if (points.length < 1) return;
+      const sourceRows = item.source === "temperature" ? temperatures : vitals;
+      const points = sourceRows
+        .map((row) => ({
+          timestamp: new Date(row.timestamp).getTime(),
+          value: safeNumber(row[item.key])
+        }))
+        .filter((point) => Number.isFinite(point.timestamp) && point.value !== null)
+        .sort((a, b) => a.timestamp - b.timestamp);
+      if (!points.length) return;
+
       const values = points.map((point) => point.value);
       let min = Math.min(...values);
       let max = Math.max(...values);
@@ -66,22 +84,31 @@
       ctx.lineCap = "round";
       ctx.beginPath();
       points.forEach((point, pointIndex) => {
-        const x = padding.left + (point.index / Math.max(1, rows.length - 1)) * chartWidth;
+        const x = padding.left
+          + ((point.timestamp - firstTimestamp) / timeRange) * chartWidth;
         const normalized = (point.value - min) / range;
         const y = padding.top + chartHeight - normalized * chartHeight;
         if (pointIndex === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       });
       ctx.stroke();
+      if (points.length === 1) {
+        const x = padding.left
+          + ((points[0].timestamp - firstTimestamp) / timeRange) * chartWidth;
+        const normalized = (points[0].value - min) / range;
+        const y = padding.top + chartHeight - normalized * chartHeight;
+        ctx.fillStyle = item.color;
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
     });
 
-    const firstTime = rows[0]?.timestamp;
-    const lastTime = rows[rows.length - 1]?.timestamp;
     ctx.fillStyle = "#64748b";
     ctx.textAlign = "left";
-    ctx.fillText(timeLabel(firstTime), padding.left, height - 12);
+    ctx.fillText(timeLabel(allRows[0]?.timestamp), padding.left, height - 12);
     ctx.textAlign = "right";
-    ctx.fillText(timeLabel(lastTime), width - padding.right, height - 12);
+    ctx.fillText(timeLabel(allRows[allRows.length - 1]?.timestamp), width - padding.right, height - 12);
   }
 
   function timeLabel(value) {
