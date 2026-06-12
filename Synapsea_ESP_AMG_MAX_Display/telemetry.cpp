@@ -21,6 +21,21 @@ static volatile bool vitalsUploadPending = false;
 static unsigned long lastTemperatureScheduled = 0;
 static unsigned long lastVitalsScheduled = 0;
 static portMUX_TYPE snapshotMux = portMUX_INITIALIZER_UNLOCKED;
+static const float MIN_VALID_AMG_TEMP = -20.0f;
+static const float MAX_VALID_AMG_TEMP = 120.0f;
+
+static bool isValidTemperature(float value) {
+  return isfinite(value)
+    && value >= MIN_VALID_AMG_TEMP
+    && value <= MAX_VALID_AMG_TEMP;
+}
+
+static bool isValidTemperatureArray(const float *values, int count) {
+  for (int index = 0; index < count; index++) {
+    if (!isValidTemperature(values[index])) return false;
+  }
+  return true;
+}
 
 static void appendMatrix(
   String &json,
@@ -149,7 +164,11 @@ static void addCommonHeaders(HTTPClient &http) {
   }
 }
 
-static int sendRequest(const char *url, const String *payload = nullptr) {
+static int sendRequest(
+  const char *url,
+  const String *payload = nullptr,
+  String *responseBody = nullptr
+) {
   WiFiClientSecure client;
   client.setInsecure();
 
@@ -163,6 +182,9 @@ static int sendRequest(const char *url, const String *payload = nullptr) {
 
   addCommonHeaders(http);
   const int statusCode = payload ? http.POST(*payload) : http.GET();
+  if (responseBody && statusCode > 0) {
+    *responseBody = http.getString();
+  }
   http.end();
   return statusCode;
 }
@@ -174,6 +196,17 @@ static void testApiStatus() {
 }
 
 static void uploadTemperature() {
+  if (
+    !isValidTemperatureArray(rawForUpload, AMG_ROWS * AMG_COLS)
+    || !isValidTemperatureArray(
+      interpolatedForUpload,
+      INTERPOLATED_ROWS * INTERPOLATED_COLS
+    )
+  ) {
+    Serial.println("AMG8833 snapshot descartado: temperatura invalida");
+    return;
+  }
+
   float minimum, maximum, average;
   int hotspotX, hotspotY;
   calculateRawStats(
@@ -216,9 +249,38 @@ static void uploadTemperature() {
   payload += String(hotspotY);
   payload += '}';
 
-  const int statusCode = sendRequest(API_TEMPERATURE_URL, &payload);
-  Serial.print("Telemetria AMG HTTP ");
+  Serial.println("AMG8833 snapshot valido");
+  Serial.print("minTemp: ");
+  Serial.println(minimum, 2);
+  Serial.print("avgTemp: ");
+  Serial.println(average, 2);
+  Serial.print("maxTemp: ");
+  Serial.println(maximum, 2);
+  Serial.print("hotspotX: ");
+  Serial.println(hotspotX);
+  Serial.print("hotspotY: ");
+  Serial.println(hotspotY);
+  Serial.print("grid: ");
+  Serial.print(AMG_COLS);
+  Serial.print('x');
+  Serial.println(AMG_ROWS);
+  Serial.print("interpolatedGrid: ");
+  Serial.print(INTERPOLATED_COLS);
+  Serial.print('x');
+  Serial.println(INTERPOLATED_ROWS);
+  Serial.print("POST ");
+  Serial.println(API_TEMPERATURE_URL);
+
+  String responseBody;
+  const int statusCode = sendRequest(
+    API_TEMPERATURE_URL,
+    &payload,
+    &responseBody
+  );
+  Serial.print("HTTP ");
   Serial.println(statusCode);
+  Serial.print("Resposta API: ");
+  Serial.println(responseBody.length() ? responseBody : "(sem corpo)");
 }
 
 static void uploadVitals() {
@@ -315,6 +377,17 @@ void iniciarTelemetria() {
 void agendarTelemetriaAMG() {
   const unsigned long now = millis();
   if (now - lastTemperatureScheduled < TELEMETRY_UPLOAD_INTERVAL_MS) return;
+
+  if (
+    !isValidTemperatureArray(pixels, AMG_ROWS * AMG_COLS)
+    || !isValidTemperatureArray(
+      dest_2d,
+      INTERPOLATED_ROWS * INTERPOLATED_COLS
+    )
+  ) {
+    Serial.println("AMG8833 leitura descartada antes do snapshot");
+    return;
+  }
 
   portENTER_CRITICAL(&snapshotMux);
   if (!temperatureUploadPending) {

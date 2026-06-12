@@ -6,6 +6,8 @@ const { buildReadingScope } = require("../utils/access");
 const { buildTemperatureAlerts } = require("../services/insight.service");
 
 const router = express.Router();
+const MIN_VALID_TEMPERATURE = -20;
+const MAX_VALID_TEMPERATURE = 120;
 const columns = `
   t.id, t.patient_id AS patientId, t.device_id AS deviceId, t.timestamp,
   t.grid, t.interpolated_grid AS interpolatedGrid,
@@ -15,12 +17,39 @@ const columns = `
   t.max_temp AS maxTemp, t.min_temp AS minTemp,
   t.avg_temp AS avgTemp, t.hotspot_x AS hotspotX, t.hotspot_y AS hotspotY,
   t.created_at AS createdAt`;
+const validReadingSql = `
+  t.min_temp BETWEEN ${MIN_VALID_TEMPERATURE} AND ${MAX_VALID_TEMPERATURE}
+  AND t.avg_temp BETWEEN ${MIN_VALID_TEMPERATURE} AND ${MAX_VALID_TEMPERATURE}
+  AND t.max_temp BETWEEN ${MIN_VALID_TEMPERATURE} AND ${MAX_VALID_TEMPERATURE}
+  AND t.min_temp <= t.avg_temp
+  AND t.avg_temp <= t.max_temp`;
+
+function appendScopeCondition(scopeSql, condition) {
+  return `${scopeSql}${scopeSql ? " AND " : " WHERE "}${condition}`;
+}
+
+function isValidTemperature(value) {
+  return typeof value === "number"
+    && Number.isFinite(value)
+    && value >= MIN_VALID_TEMPERATURE
+    && value <= MAX_VALID_TEMPERATURE;
+}
+
+function isValidTemperatureMatrix(matrix, rows, columns) {
+  return Array.isArray(matrix)
+    && matrix.length === rows
+    && matrix.every(
+      (row) => Array.isArray(row)
+        && row.length === columns
+        && row.every(isValidTemperature)
+    );
+}
 
 router.get("/latest", optionalAuthenticate, async (request, response, next) => {
   try {
     const scope = buildReadingScope(request, "t");
     const rows = await db.query(
-      `SELECT ${columns} FROM temperature_readings t${scope.sql}
+      `SELECT ${columns} FROM temperature_readings t${appendScopeCondition(scope.sql, validReadingSql)}
        ORDER BY t.timestamp DESC LIMIT 1`,
       scope.params
     );
@@ -35,7 +64,7 @@ router.get("/history", optionalAuthenticate, async (request, response, next) => 
     const limit = Math.min(Math.max(Number(request.query.limit) || 100, 1), 500);
     const scope = buildReadingScope(request, "t");
     const rows = await db.query(
-      `SELECT ${columns} FROM temperature_readings t${scope.sql}
+      `SELECT ${columns} FROM temperature_readings t${appendScopeCondition(scope.sql, validReadingSql)}
        ORDER BY t.timestamp DESC LIMIT ${limit}`,
       scope.params
     );
@@ -47,11 +76,12 @@ router.get("/history", optionalAuthenticate, async (request, response, next) => 
 
 router.post("/", async (request, response, next) => {
   const data = request.body || {};
-  const validGrid = Array.isArray(data.grid)
-    && data.grid.length === 8
-    && data.grid.every((row) => Array.isArray(row) && row.length === 8);
+  const validGrid = isValidTemperatureMatrix(data.grid, 8, 8);
   if (!validGrid) {
-    return response.status(400).json({ error: "grid deve ser uma matriz 8x8." });
+    console.warn("Leitura AMG8833 descartada: grid 8x8 invalido.");
+    return response.status(400).json({
+      error: "grid deve ser uma matriz 8x8 com temperaturas entre -20 e 120 graus."
+    });
   }
   const hasInterpolatedGrid = Array.isArray(data.interpolatedGrid);
   const interpolationHeight = Number(data.interpolationHeight)
@@ -68,13 +98,46 @@ router.post("/", async (request, response, next) => {
     && interpolationWidth <= 64
     && interpolationHeight <= 64
     && data.interpolatedGrid.length === interpolationHeight
-    && data.interpolatedGrid.every(
-      (row) => Array.isArray(row) && row.length === interpolationWidth
+    && isValidTemperatureMatrix(
+      data.interpolatedGrid,
+      interpolationHeight,
+      interpolationWidth
     )
   );
   if (!validInterpolatedGrid) {
+    console.warn("Leitura AMG8833 descartada: interpolatedGrid invalido.");
     return response.status(400).json({
-      error: "interpolatedGrid deve corresponder a interpolationWidth e interpolationHeight."
+      error: "interpolatedGrid deve ter dimensoes validas e temperaturas entre -20 e 120 graus."
+    });
+  }
+
+  const validStats = ["minTemp", "avgTemp", "maxTemp"].every(
+    (field) => isValidTemperature(data[field])
+  ) && data.minTemp <= data.avgTemp && data.avgTemp <= data.maxTemp;
+  const validHotspot = Number.isInteger(data.hotspotX)
+    && Number.isInteger(data.hotspotY)
+    && data.hotspotX >= 0
+    && data.hotspotX < 8
+    && data.hotspotY >= 0
+    && data.hotspotY < 8;
+  if (!validStats || !validHotspot) {
+    console.warn("Leitura AMG8833 descartada: estatisticas ou hotspot invalidos.");
+    return response.status(400).json({
+      error: "minTemp, avgTemp, maxTemp e hotspot devem representar uma leitura AMG8833 valida."
+    });
+  }
+
+  const rawValues = data.grid.flat();
+  const calculatedMin = Math.min(...rawValues);
+  const calculatedMax = Math.max(...rawValues);
+  const calculatedAvg = rawValues.reduce((sum, value) => sum + value, 0) / rawValues.length;
+  const statsMatchGrid = Math.abs(data.minTemp - calculatedMin) <= 0.05
+    && Math.abs(data.maxTemp - calculatedMax) <= 0.05
+    && Math.abs(data.avgTemp - calculatedAvg) <= 0.05;
+  if (!statsMatchGrid) {
+    console.warn("Leitura AMG8833 descartada: estatisticas nao correspondem ao grid.");
+    return response.status(400).json({
+      error: "maxTemp, minTemp e avgTemp nao correspondem a matriz grid recebida."
     });
   }
 

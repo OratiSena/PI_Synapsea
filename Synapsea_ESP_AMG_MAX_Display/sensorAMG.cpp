@@ -90,6 +90,8 @@ for (int i = 0; i < 64; i++) {
     }
   }
 
+  agendarTelemetriaAMG();
+
   for (int i = 0; i < 10; i++) {
     Serial.print("dest[");
     Serial.print(i);

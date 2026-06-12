@@ -64,6 +64,15 @@
       </div>`).join("")}</div>`;
   }
 
+  function renderTemperatureMetric(temperature) {
+    const valid = window.isValidTemperatureReading?.(temperature);
+    setText("metric-temperature", valid ? formatValue(temperature.maxTemp, 1) : "--");
+    setText(
+      "status-temperature",
+      valid ? "Máxima recebida do AMG8833" : "Aguardando leitura válida"
+    );
+  }
+
   function renderInsight(insight) {
     const container = document.getElementById("dashboard-insight");
     const badge = document.getElementById("insight-level");
@@ -95,6 +104,7 @@
     ]);
 
     renderVitals(vitals);
+    renderTemperatureMetric(temperature);
     renderVitalsChart("vitals-chart", history);
     renderAlerts(Array.isArray(alerts) ? alerts : []);
     renderDevices(Array.isArray(devices) ? devices : []);

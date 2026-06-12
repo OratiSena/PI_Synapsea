@@ -2,18 +2,20 @@
   "use strict";
 
   function renderTemperature(data) {
-    renderThermalHeatmap("thermal-canvas", data);
-    setText("temp-max", data ? formatTemperature(data.maxTemp) : "--");
-    setText("temp-avg", data ? formatTemperature(data.avgTemp) : "--");
-    setText("temp-min", data ? formatTemperature(data.minTemp) : "--");
-    setText("heatmap-time", data?.timestamp ? `Atualizado ${formatRelativeTime(data.timestamp)}` : "Aguardando leitura real");
-    setText("scale-min", data ? formatTemperature(data.minTemp) : "--");
-    setText("scale-max", data ? formatTemperature(data.maxTemp) : "--");
+    const valid = window.isValidTemperatureReading?.(data);
+    const reading = valid ? data : null;
+    renderThermalHeatmap("thermal-canvas", reading);
+    setText("temp-max", reading ? formatTemperature(reading.maxTemp) : "--");
+    setText("temp-avg", reading ? formatTemperature(reading.avgTemp) : "--");
+    setText("temp-min", reading ? formatTemperature(reading.minTemp) : "--");
+    setText("heatmap-time", reading?.timestamp ? `Atualizado ${formatRelativeTime(reading.timestamp)}` : "Aguardando leitura válida");
+    setText("scale-min", reading ? formatTemperature(reading.minTemp) : "--");
+    setText("scale-max", reading ? formatTemperature(reading.maxTemp) : "--");
     setText(
       "heatmap-source",
-      data?.interpolatedGrid
-        ? `${data.interpolationWidth || data.interpolatedGrid[0]?.length}x${data.interpolationHeight || data.interpolatedGrid.length} recebido do ESP32`
-        : "Fallback 8x8 interpolado no navegador"
+      reading?.interpolatedGrid
+        ? `${reading.interpolationWidth || reading.interpolatedGrid[0]?.length}x${reading.interpolationHeight || reading.interpolatedGrid.length} recebido do ESP32`
+        : reading ? "Fallback 8x8 interpolado no navegador" : "Aguardando matriz válida"
     );
   }
 

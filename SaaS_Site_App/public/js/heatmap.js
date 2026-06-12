@@ -23,23 +23,46 @@
     return `rgb(${rgb.join(",")})`;
   }
 
+  function isValidThermalValue(value) {
+    const number = Number(value);
+    return Number.isFinite(number) && number >= -20 && number <= 120;
+  }
+
+  function isValidThermalGrid(grid) {
+    return Array.isArray(grid)
+      && grid.length > 0
+      && Array.isArray(grid[0])
+      && grid[0].length > 0
+      && grid.every(
+        (row) => Array.isArray(row)
+          && row.length === grid[0].length
+          && row.every(isValidThermalValue)
+      );
+  }
+
+  function isValidTemperatureReading(data) {
+    return Boolean(data)
+      && isValidThermalGrid(data.grid)
+      && ["minTemp", "avgTemp", "maxTemp"].every(
+        (field) => isValidThermalValue(data[field])
+      )
+      && Number(data.minTemp) <= Number(data.avgTemp)
+      && Number(data.avgTemp) <= Number(data.maxTemp);
+  }
+
   function renderThermalHeatmap(canvasId, temperatureData) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
     const rawGrid = temperatureData?.grid;
     const interpolatedGrid = temperatureData?.interpolatedGrid;
-    const hasInterpolatedGrid = Array.isArray(interpolatedGrid)
-      && interpolatedGrid.length > 0
-      && interpolatedGrid.every(
-        (row) => Array.isArray(row) && row.length === interpolatedGrid[0].length
-      );
+    const hasInterpolatedGrid = isValidThermalGrid(interpolatedGrid);
     const grid = hasInterpolatedGrid ? interpolatedGrid : rawGrid;
-    if (!Array.isArray(grid) || !grid.length || !Array.isArray(grid[0]) || !grid[0].length) {
+    if (!isValidTemperatureReading(temperatureData) || !isValidThermalGrid(grid)) {
       canvas.classList.add("hidden");
       const empty = document.getElementById(`${canvasId}-empty`);
       if (empty) {
         empty.classList.remove("hidden");
-        showEmptyState(empty, "Aguardando leitura real do AMG8833.");
+        showEmptyState(empty, "Aguardando leitura valida do AMG8833.");
       }
       return;
     }
@@ -100,4 +123,5 @@
   }
 
   window.renderThermalHeatmap = renderThermalHeatmap;
+  window.isValidTemperatureReading = isValidTemperatureReading;
 })();
