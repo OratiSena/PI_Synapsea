@@ -36,8 +36,8 @@ static long prevIR2         = 0;
 static bool histPopupVisible = false;  // popup de histórico BPM/SpO2 ativo
 
 // ─── Relógio simulado ─────────────────────────────────────────────────────
-static int horaSimulada    = 14;
-static int minutoSimulado  = 32;
+static int horaSimulada    = 20;
+static int minutoSimulado  = 23;
 
 // ─── Variáveis externas do .ino ───────────────────────────────────────────
 extern int   telaAtual;

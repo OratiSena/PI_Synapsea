@@ -5,7 +5,7 @@ bool amgDisponivel = false;
 
 void iniciarAMG8833() {
 
-  amgDisponivel = amg.begin(0x68);
+  amgDisponivel = amg.begin(0x69);
 
   if (!amgDisponivel) {
 
@@ -41,13 +41,25 @@ void lerAMG8833() {
 
   amg.readPixels(pixels2);
 
-  for (int i = 0; i < 64; i++) {
+  float minTemp = 999;
+float maxTemp = -999;
 
-    pixels[i] =
-      pixels2[(((int)(i / 8) * 8) + 7 - (i % 8))]
-      + OFFSET_TEMP
-      + AMG_TEMP_OFFSET;
+for (int i = 0; i < 64; i++) {
+
+  pixels[i] =
+    pixels2[(((int)(i / 8) * 8) + 7 - (i % 8))]
+    + OFFSET_TEMP
+    + AMG_TEMP_OFFSET;
+
+  if (pixels[i] < minTemp) minTemp = pixels[i];
+  if (pixels[i] > maxTemp) maxTemp = pixels[i];
   }
+
+    Serial.print("PIXEL MIN = ");
+    Serial.println(minTemp);
+
+    Serial.print("PIXEL MAX = ");
+    Serial.println(maxTemp);
 
   if (MODE_INTERPOLATION == 2) {
 
@@ -78,9 +90,6 @@ void lerAMG8833() {
     }
   }
 
-  agendarTelemetriaAMG();
-
-  // DEBUG
   for (int i = 0; i < 10; i++) {
     Serial.print("dest[");
     Serial.print(i);
